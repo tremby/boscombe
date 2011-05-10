@@ -1,0 +1,261 @@
+<h1>Coding a mashup: Boscombe surf status</h1>
+
+<p>As an example of using the HLAPI this section describes how a "surf status" 
+mashup application was built.</p>
+
+<p>The purpose of this mashup is to take wave height data from the HLAPI for one or 
+more areas, plot this data on a graph and at the same time pick up related 
+information from other sources such as a map showing the location and lists of 
+nearby amenities.</p>
+
+<h2>Scripting language and libraries</h2>
+
+<p>This example uses the <a href="http://php.net/">PHP</a> scripting language. For Sparql queries and RDF 
+manipulation it uses the <a href="http://arc.semsol.org/">Arc2</a> library and, for ease of coding and 
+readability, <a href="http://graphite.ecs.soton.ac.uk/">Graphite</a>. The <a href="http://code.google.com/apis/chart/">Google Chart API</a> is used for 
+charts and the <a href="http://code.google.com/apis/maps/documentation/staticmaps/">Google Static Maps API</a> and <a href="http://openlayers.org/">Openlayers</a> for 
+mapping.</p>
+
+<p>Another useful tool is an RDF browser such as the <a href="http://graphite.ecs.soton.ac.uk/browser/">Q&amp;D RDF Browser</a>.</p>
+
+<p>First we load in the Arc2 and Graphite libraries and set up Graphite with a list 
+of namespaces for coding simplicity.</p>
+
+<pre><code>require_once "arc/ARC2.php";
+require_once "Graphite.php";
+$graph = new Graphite();
+$graph-&gt;ns("id-semsorgrid", "http://id.semsorgrid.ecs.soton.ac.uk/");
+$graph-&gt;ns("ssn", "http://purl.oclc.org/NET/ssnx/ssn#");
+$graph-&gt;ns("DUL", "http://www.loa-cnr.it/ontologies/DUL.owl#");
+$graph-&gt;ns("time", "http://www.w3.org/2006/time#");
+</code></pre>
+
+<p>This continues for other useful namespace prefixes. The <code>id-semsorgrid</code> prefix 
+is added for further code brevity.</p>
+
+<h2>Displaying a map of all wave height sensors</h2>
+
+<p>One of the observation serializations available from the CCO deployment of the 
+HLAPI is a GeoJSON format. This serialization, which shows the locations of all 
+wave height readings made in a particular time frame, can be rendered by various 
+mapping engines including Openlayers.</p>
+
+<p>The markup to display the map, given the path to an OpenJSON file, is very 
+simple and fully documented by Openlayers.</p>
+
+<p>Depending on how the HLAPI is configured the OpenJSON representation of wave 
+height readings for a particular hour may be at</p>
+
+<pre><code>http://geojson.semsorgrid.ecs.soton.ac.uk/observations/cco/Hs/20110215/00
+</code></pre>
+
+<p>Given this URL a map such as the following may be generated.</p>
+
+<p><img src="openlayersscreenshot.png" alt="Openlayers map screenshot" /></p>
+
+<h2>Getting the day's wave height readings and the sensor metadata</h2>
+
+<p>In the case of the CCO deployment, the current day's wave height readings for 
+the Boscombe sensor are identified by</p>
+
+<pre><code>http://id.semsorgrid.ecs.soton.ac.uk/observations/cco/boscombe/Hs/latest
+</code></pre>
+
+<p>We can direct Graphite to load the resources into a graph -- Graphite and the 
+HLAPI will automatically negotiate a content type which can be used. We're using 
+the namespace we defined above for brevity.</p>
+
+<pre><code>$graph-&gt;load("id-semsorgrid:observations/cco/boscombe/Hs/latest");
+</code></pre>
+
+<p>Graphite allows the graph to be rendered directly as HTML to quickly visualize 
+what is available, the same can be achieved by using a dedicated RDF browser.</p>
+
+<pre><code>echo $graph-&gt;dump();
+</code></pre>
+
+<p>The beginning of the output is something like the following:</p>
+
+<pre><code>id-semsorgrid:observations/cco/boscombe/Hs/20110215
+    -&gt; rdf:type -&gt; DUL:Collection
+    -&gt; DUL:hasMember -&gt; id-semsorgrid:observations/cco/boscombe/Hs/20110215#000000,
+        id-semsorgrid:observations/cco/boscombe/Hs/20110215#003000,
+        id-semsorgrid:observations/cco/boscombe/Hs/20110215#010000
+
+id-semsorgrid:observations/cco/boscombe/Hs/20110215#000000
+    -&gt; rdf:type -&gt; ssn:Observation
+    -&gt; DUL:directlyPrecedes -&gt; id-semsorgrid:observations/cco/boscombe/Hs/20110215#003000
+    -&gt; DUL:isMemberOf -&gt; id-semsorgrid:observations/cco/Hs/20110215
+    -&gt; DUL:directlyFollows -&gt; id-semsorgrid:observations/cco/boscombe/Hs/20110214#233000
+    -&gt; ssn:observedProperty -&gt; http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height
+    -&gt; ssn:featureOfInterest -&gt; http://www.eionet.europa.eu/gemet/concept?cp=7495
+    -&gt; ssn:observedBy -&gt; id-semsorgrid:sensors/cco/boscombe
+    -&gt; ssn:observationResult -&gt; _:arce2d5b1
+    -&gt; ssn:observationResultTime -&gt; _arce2d5b3
+    &lt;- is DUL:hasMember of &lt;- id-semsorgrid:observations/cco/boscombe/Hs/20110215
+    &lt;- is DUL:directlyFollows of &lt;- id-semsorgrid:observations/cco/boscombe/Hs/20110215#003000
+    &lt;- is DUL:directlyPrecedes of &lt;- id-semsorgrid:observations/cco/boscombe/Hs/20110214#233000
+</code></pre>
+
+<p>The bnodes (blank nodes -- non-literal nodes not identified by URIs) are also 
+shown and their IDs can be traced to see which properties are available on each 
+node.</p>
+
+<p>A lot of useful information such as the sensor's coordinates is attached to the 
+sensor's URI, which is linked from each <code>ssn:Observation</code> node. It's easy to get 
+the URI, simply by getting <code>ssn:Observation</code> nodes and then collecting the first 
+found <code>ssn:observedBy</code> property of any of them. It's important to handle the 
+case where there are not yet any results.</p>
+
+<pre><code>$sensor = $graph-&gt;allOfType("ssn:Observation")-&gt;get("ssn:observedBy")-&gt;distinct()-&gt;current();
+if ($sensor-&gt;isNull())
+    die("No results yet today");
+$sensorURI = $sensor-&gt;uri;
+</code></pre>
+
+<p>To get the sensor's coordinates we ask Graphite to dereference the sensor's URI 
+and load its triples, then traverse the expanded graph to fetch the required 
+values. The traversals here can once again be visualized by first dumping the 
+graph or exploring the graph in any RDF browser.</p>
+
+<pre><code>$graph-&gt;load($sensorURI);
+$location = $graph-&gt;resource($sensorURI)-&gt;get("ssn:hasDeployment")-&gt;get("ssn:deployedOnPlatform")-&gt;get("sw:hasLocation");
+$coords = array(
+    floatVal((string) $location-&gt;get("sw:coordinate2")-&gt;get("sw:hasNumericValue")),
+    floatVal((string) $location-&gt;get("sw:coordinate1")-&gt;get("sw:hasNumericValue")),
+);
+</code></pre>
+
+<p>To collect all wave height observations we query the graph for all nodes of type 
+<code>ssn:Observation</code> and skip over those whose <code>ssn:observedProperty</code> property is 
+not that which we are looking for (just in case we have other observation types 
+in our graph).</p>
+
+<p>Each observation corresponds to a particular time interval so we need to collect 
+the time (in this example we'll associate the end of the time interval -- 
+<code>time:hasEnd</code> -- with the reading) as well as the wave height observation 
+itself. The code snippet below also skips any observations whose 
+<code>ssn:observationResultTime</code> property doesn't point to a node of type 
+<code>time:Interval</code>, but it would be trivial to also parse nodes of different time 
+classes.</p>
+
+<p>Finally in this snippet the array of observations is sorted by time.</p>
+
+<p>Again, to see how the traversal is built up it's easiest to inspect the graph 
+visually.</p>
+
+<pre><code>$observations = array();
+foreach ($graph-&gt;allOfType("ssn:Observation") as $observationNode) {
+    if ($observationNode-&gt;get("ssn:observedProperty") != "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height")
+        continue;
+    $timeNode = $observationNode-&gt;get("ssn:observationResultTime");
+    if (!$timeNode-&gt;isType("time:Interval"))
+        continue;
+    $time = strtotime($timeNode-&gt;get("time:hasEnd"));
+    $observations[$time] = floatVal((string) $observationNode-&gt;get("ssn:observationResult")-&gt;get("ssn:hasResult"));
+}
+ksort($observations, SORT_NUMERIC);
+</code></pre>
+
+<h2>Visualizing the data</h2>
+
+<p>The array resulting from the code above can be used to produce a chart of the 
+wave heights. Explaining the snippet below is out of the scope of this document, 
+but it uses the Google Chart API to produce a line graph of wave height against 
+time.</p>
+
+<pre><code>// organize data
+$keys = array_keys($observations);
+$start = array_shift($keys);
+$end = array_pop($keys);
+$period = $end - $start;
+$datax = $datay = array();
+$maxheight = ceil(max($observations) * 10 * 1.2) / 10;
+foreach ($observations as $time =&gt; $height) {
+    $datax[] = ($time - $start) * 100 / $period;
+    $datay[] = $height * 100 / $maxheight;
+}
+
+// x axis labels
+$axisx = array();
+for ($time = $start; $time &lt;= $end; $time += $period / 6)
+    $axisx[] = date("H:i", $time);
+
+// parameters for Google Chart API
+$chartparams = array(
+    "cht=lxy", //line x-y
+    "chs=340x200", //size
+    "chco=0066cc", //data colours
+    "chm=B,99ccff,0,0,0", //fill under the line
+    "chd=t:" . implode(",", $datax) . "|" . implode(",", $datay), //data
+    "chxt=x,y,x", //visible axes
+    "chxr=0,0,100|1,0," . $maxheight, //x and y axis ranges
+    "chxl=0:|" . implode("|", $axisx) . "|2:|Time", //custom labels for axes, evenly spread, also axis titles
+    "chxp=2,50|3,50", //positions of axis titles
+    "chf=bg,s,ffffff00", //transparent background
+);
+
+// output chart
+echo '&lt;img src="http://chart.apis.google.com/chart?' . implode("&amp;", $chartparams) . '"&gt;';
+</code></pre>
+
+<p>It's easy to show a map with the sensor's position highlighted, too: the 
+following uses the Google Static Maps API to do this.</p>
+
+<pre><code>echo '&lt;img src="http://maps.google.com/maps/api/staticmap?size=300x200&amp;center=' . $coords[0] . ',' . $coords[1] . '&amp;zoom=8&amp;maptype=hybrid&amp;sensor=false&amp;markers=' . $coords[0] . ',' . $coords[1] . '"&gt;';
+</code></pre>
+
+<h2>Fetching related data from other data sources</h2>
+
+<p>We can get the name of a nearby place and the nearest post code from the web 
+services provided by <a href="http://www.geonames.org/">Geonames</a>. Geonames returns XML 
+which is easy to parse with PHP. Again, explaining how the external API call 
+works isn't in the scope of this document.</p>
+
+<pre><code>// get nearby place name
+$placenameXML = simplexml_load_file("http://ws.geonames.org/findNearbyPlaceName?lat={$coords[0]}&amp;lng={$coords[1]}");
+$placename = array_shift($placenameXML-&gt;xpath('/geonames/geoname[1]/name[1]'));
+
+// get nearby postcode
+$postcodeXML = simplexml_load_file("http://ws.geonames.org/findNearbyPostalCodes?lat=" . $coords[0] . "&amp;lng=" . $coords[1]);
+$postcode = array_shift($postcodeXML-&gt;xpath('/geonames/code[1]/postalcode[1]'));
+</code></pre>
+
+<p>The postcode is used in the surf status mashup to fetch the British region name 
+from Ordnance Survey, which in turn is used to fetch population and traffic 
+accident data from Eurostat.</p>
+
+<p>Data is also collected from <a href="http://linkedgeodata.org/">Linked Geodata</a> to get 
+the whereabouts of nearby facilities. For instance, to get parking facilities 
+within five kilometres of the sensor, its Sparql endpoint is queried as follows.</p>
+
+<pre><code>$store = ARC2::getRemoteStore(array("remote_store_endpoint" =&gt; "http://linkedgeodata.org/sparql/"));
+$rows = $store-&gt;query("
+    PREFIX lgdo: &lt;http://linkedgeodata.org/ontology/&gt;
+    PREFIX geo: &lt;http://www.w3.org/2003/01/geo/wgs84_pos#&gt;
+    PREFIX rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt;
+    SELECT * WHERE {
+        { ?place a lgdo:Parking . }
+        UNION { ?place a lgdo:MotorcycleParking . }
+        UNION { ?place a lgdo:BicycleParking . }
+        ?place
+            a ?type ;
+            geo:geometry ?placegeo ;
+            rdfs:label ?placename .
+        FILTER(&lt;bif:st_intersects&gt; (?placegeo, &lt;bif:st_point&gt; ($coords[1], $coords[0]), 5)) .
+    }
+", "rows");
+</code></pre>
+
+<p>The returned results include the coordinates of each parking facility 
+(<code>placegeo</code>), from which the distance to the sensor can be calculated.</p>
+
+<p>Similar queries can be used to get data on other types of nearby amenities -- 
+the surf status mashup also locates nearby pubs, cafés and shops.</p>
+
+<h2>Finished mashup</h2>
+
+<p>The finished mashup, once styled, looks something like the screenshot shown 
+(with only three readings so far that day).</p>
+
+<p><img src="screenshot.png" alt="Finished mashup screenshot" /></p>
