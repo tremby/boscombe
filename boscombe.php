@@ -10,121 +10,9 @@ define("ENDPOINT_DBPEDIA", "http://dbpedia.org/sparql/");
 
 define("PROP_WINDWAVEHEIGHT", "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height");
 
-function uriendpart($string) {
-	return preg_replace('%.*[/#](.*?)[/#]?%', '\1', $string);
-}
-
-// return a Sparql PREFIX string, given a namespace key from the global $ns 
-// array, or many such PREFIX strings for an array of such keys
-function prefix($n = null) {
-	global $ns;
-	if (is_null($n))
-		$n = array_keys($ns);
-	if (!is_array($n))
-		$n = array($n);
-	$ret = "";
-	foreach ($n as $s)
-		$ret .= "PREFIX $s: <" . $ns[$s] . ">\n";
-	return $ret;
-}
-
-// return results of a Sparql query
-// maxage is the number of seconds old an acceptable cached result can be 
-// (default one day, 0 means it must be collected newly. false means must be 
-// collected newly and the result will not be stored. true means use cached 
-// result however old it is)
-// type is passed straight through to Arc
-// if no PREFIX lines are found in the query all known prefixes are prepended
-function sparqlquery($endpoint, $query, $type = "rows", $maxage = 86400/*1 day*/) {
-	$cachedir = "cache/sparql/" . md5($endpoint);
-
-	if (!is_dir($cachedir))
-		mkdir($cachedir) or die("couldn't make cache directory");
-
-	if (strpos($query, "PREFIX") === false)
-		$query = prefix() . $query;
-
-	$cachefile = $cachedir . "/" . md5($query . $type);
-
-	// collect from cache if available and recent enough
-	if ($maxage === true && file_exists($cachefile) || $maxage !== false && $maxage > 0 && file_exists($cachefile) && time() < filemtime($cachefile) + $maxage)
-		return unserialize(file_get_contents($cachefile));
-
-	// cache is not to be used or cached file is out of date. query endpoint
-	$config = array(
-		"remote_store_endpoint" => $endpoint,
-		"reader_timeout" => 120,
-		"ns" => $GLOBALS["ns"],
-	);
-	$store = ARC2::getRemoteStore($config);
-	$result = $store->query($query, $type);
-	if (!empty($store->errors)) {
-		foreach ($store->errors as $error)
-			trigger_error("Sparql error: " . $error, E_USER_WARNING);
-		return null;
-	}
-
-	// store result unless caching is switched off
-	if ($maxage !== false)
-		file_put_contents($cachefile, serialize($result));
-
-	return $result;
-}
-
-// query linkedgeodata.org for nearby amenities
-function nearbyamenities($type, $latlon, $radius = 10) {
-	global $ns;
-
-	// upgrade $type to an array of itself if an array wasn't given
-	if (!is_array($type))
-		$type = array($type);
-
-	// execute query
-	$rows = sparqlquery(ENDPOINT_LINKEDGEODATA, "
-		SELECT *
-		WHERE {
-			{ ?place a " . implode(" . } UNION { ?place a ", $type) . " . }
-			?place
-				a ?type ;
-				geo:geometry ?placegeo ;
-				rdfs:label ?placename .
-			FILTER(<bif:st_intersects> (?placegeo, <bif:st_point> ($latlon[1], $latlon[0]), $radius)) .
-		}
-	");
-
-	// collect results
-	$results = array();
-	foreach ($rows as $row) {
-		$coords = parsepointstring($row['placegeo']);
-		$results[$row["place"]] = array($row['placename'], $coords, distance($coords, $latlon));
-	}
-
-	// sort according to ascending distance from centre
-	usort($results, "sortbythirdelement");
-
-	return $results;
-}
-function sortbythirdelement($a, $b) {
-	$diff = $a[2] - $b[2];
-	// usort needs integers, floats aren't good enough
-	return $diff < 0 ? -1 : ($diff > 0 ? 1 : 0);
-}
-
-// parse a string
-// 	POINT(longitude latitude)
-// and return
-// 	array(float latitude, float longitude)
-function parsepointstring($string) {
-	$coords = array_map("floatVal", explode(" ", preg_replace('%^.*\((.*)\)$%', '\1', $string)));
-	return array_reverse($coords);
-}
-
-// return the distance in km between two array(lat, lon)
-function distance($latlon1, $latlon2) {
-	$angle = acos(sin(deg2rad($latlon1[0])) * sin(deg2rad($latlon2[0])) + cos(deg2rad($latlon1[0])) * cos(deg2rad($latlon2[0])) * cos(deg2rad($latlon1[1] - $latlon2[1])));
-	$earthradius_km = 6372.8;
-	return $earthradius_km * $angle;
-}
+$observationsURI = "http://id.semsorgrid.ecs.soton.ac.uk/observations/cco/boscombe/Hs/latest";
+if (isset($_GET["uri"]))
+	$observationsURI = $_GET["uri"];
 
 // include the ARC2 libraries
 require_once "arc2/ARC2.php";
@@ -164,39 +52,47 @@ $graph = new Graphite();
 $graph->cacheDir("cache/graphite");
 foreach ($ns as $short => $long)
 	$graph->ns($short, $long);
-$observationsURI = "http://id.semsorgrid.ecs.soton.ac.uk/observations/cco/boscombe/Hs/latest";
 $triples = $graph->load($observationsURI);
 if ($triples < 1)
 	die("failed to load any triples from '$observationsURI'");
-
-// get sensor URI
-$sensor = $graph->allOfType("ssn:Observation")->get("ssn:observedBy")->distinct()->current();
-if ($sensor->isNull())
-	die("no results yet today");
-$sensorURI = $sensor->uri;
 
 // collect times and heights
 $observations = array();
 foreach ($graph->allOfType("ssn:Observation") as $observationNode) {
 	if ($observationNode->get("ssn:observedProperty") != PROP_WINDWAVEHEIGHT)
 		continue;
-	$timeNode = $observationNode->get("ssn:observationResultTime");
-	if (!$timeNode->isType("time:Interval"))
+	if (!$observationNode->get("ssn:observationResultTime")->isType("time:Interval"))
 		continue;
-	$time = strtotime($timeNode->get("time:hasEnd"));
-	$observations[$time] = floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasResult"));
+	$observations[] = $observationNode;
 }
+usort($observations, "sortbydate");
 
-// sort in ascending date order
-ksort($observations, SORT_NUMERIC);
+if (empty($observations))
+	die("no observations");
 
-$keys = array_keys($observations);
+// get URIs of previous and next observations for pagination
+$prevobservation = $observations[0]->get("DUL:directlyFollows");
+if ($prevobservation->isNull())
+	$prevobservation = null;
+$nextobservation = $observations[count($observations) - 1]->get("DUL:directlyPrecedes");
+if ($nextobservation->isNull())
+	$nextobservation = null;
+
+$timetoheight = array();
+foreach ($observations as $observationNode) {
+	$timeNode = $observationNode->get("ssn:observationResultTime");
+	$time = strtotime($timeNode->get("time:hasEnd"));
+	$timetoheight[$time] = floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasResult"));
+}
+ksort($timetoheight, SORT_NUMERIC); // shouldn't be necessary
+
+$keys = array_keys($timetoheight);
 $start = array_shift($keys);
 $end = array_pop($keys);
 $period = $end - $start;
 $datax = $datay = array();
-$maxheight = ceil(max($observations) * 10 * 1.2) / 10;
-foreach ($observations as $time => $height) {
+$maxheight = ceil(max($timetoheight) * 10 * 1.2) / 10;
+foreach ($timetoheight as $time => $height) {
 	$datax[] = ($time - $start) * 100 / $period;
 	$datay[] = $height * 100 / $maxheight;
 }
@@ -215,6 +111,20 @@ $chartparams = array(
 	"chxp=2,50|3,50", //positions of axis titles
 	"chf=bg,s,ffffff00", //transparent background
 );
+
+if (isset($_GET["chart"]))
+	ok(json_encode(array(
+		"src" => "http://chart.apis.google.com/chart?" . implode("&", $chartparams),
+		"source" => $observationsURI,
+		"prev" => is_null($prevobservation) ? null : $prevobservation->uri,
+		"next" => is_null($nextobservation) ? null : $nextobservation->uri,
+	)), "application/json");
+
+// get sensor URI
+$sensor = $graph->allOfType("ssn:Observation")->get("ssn:observedBy")->distinct()->current();
+if ($sensor->isNull())
+	die("no results yet today");
+$sensorURI = $sensor->uri;
 
 // get sensor coordinates
 if ($graph->load($sensorURI) == 0)
@@ -550,6 +460,47 @@ $types_convenience = array(
 			$("dl.single > dd").hide();
 			$("dl.single > dt").prepend("<a class=\"expandlink\" href=\"#\"></a>");
 			$("dl.single > dt a.expandlink, dl.single > dt a.collapselink").click(expandcollapsedl);
+
+			// chart controls
+			<?php if (!is_null($prevobservation)) { ?>
+				$("#chart_prev").click(function(e) {
+					e.preventDefault();
+					newchart("<?php echo $prevobservation->uri; ?>");
+				});
+			<?php } else { ?>
+				$("#chart_prev").hide();
+			<?php } ?>
+			<?php if (!is_null($nextobservation)) { ?>
+				$("#chart_next").click(function(e) {
+					e.preventDefault();
+					newchart("<?php echo $nextobservation->uri; ?>");
+				});
+			<?php } else { ?>
+				$("#chart_next").hide();
+			<?php } ?>
+			newchart = function(uri) {
+				$.get("<?php echo $_SERVER["PHP_SELF"]; ?>", { chart: true, uri: uri }, function(data, textstatus, xhr) {
+					$("#chart_source").attr("href", data.source).text(data.source);
+					$("#chart_prev, #chart_next").unbind("click");
+					if (data.next != null) {
+						$("#chart_next").show().click(function(e) {
+							e.preventDefault();
+							newchart(data.next);
+						});
+					} else {
+						$("#chart_next").hide();
+					}
+					if (data.prev != null) {
+						$("#chart_prev").show().click(function(e) {
+							e.preventDefault();
+							newchart(data.prev);
+						});
+					} else {
+						$("#chart_prev").hide();
+					}
+					$("#chart").attr("src", data.src);
+				});
+			};
 		});
 	</script>
 </head>
@@ -596,8 +547,12 @@ $modules[] = ob_get_clean();
 ob_start();
 ?>
 <h2>Wave height data</h2>
-<p>Showing wave height data for today (<?php echo date("Y-m-d", $start); ?>) in metres</p>
-<img src="http://chart.apis.google.com/chart?<?php echo implode("&", $chartparams); ?>">
+<p>Showing wave height data found at <a id="chart_source" class="uri" href="<?php echo htmlspecialchars($observationsURI); ?>"><?php echo htmlspecialchars($observationsURI); ?></a> in metres</p>
+<p>
+	<a id="chart_prev" href="#">&larr;</a>
+	<img id="chart" align="middle" src="http://chart.apis.google.com/chart?<?php echo implode("&", $chartparams); ?>">
+	<a id="chart_next" href="#">&rarr;</a>
+</p>
 <?php
 $modules[] = ob_get_clean();
 
@@ -708,7 +663,7 @@ ob_start();
 <ul class="twocol">
 	<?php foreach ($otherwavesensors as $othersensor) { ?>
 		<li>
-			<a class="uri" href="<?php echo htmlspecialchars($othersensor["sensor"]); ?>"><?php echo htmlspecialchars(isset($othersensor["sensorname"]) ? $othersensor["sensorname"] : uriendpart($othersensor["sensor"])); ?></a></dd>
+			<a class="uri" href="<?php echo htmlspecialchars($othersensor["sensor"]); ?>"><?php echo htmlspecialchars(isset($othersensor["sensorname"]) ? $othersensor["sensorname"] : uriendpart($othersensor["sensor"])); ?></a>
 		</li>
 	<?php } ?>
 </ul>
@@ -748,3 +703,148 @@ $modules[] = ob_get_clean();
 </div>
 </body>
 </html>
+
+<?php
+
+function uriendpart($string) {
+	return preg_replace('%.*[/#](.*?)[/#]?%', '\1', $string);
+}
+
+// return a Sparql PREFIX string, given a namespace key from the global $ns 
+// array, or many such PREFIX strings for an array of such keys
+function prefix($n = null) {
+	global $ns;
+	if (is_null($n))
+		$n = array_keys($ns);
+	if (!is_array($n))
+		$n = array($n);
+	$ret = "";
+	foreach ($n as $s)
+		$ret .= "PREFIX $s: <" . $ns[$s] . ">\n";
+	return $ret;
+}
+
+// return results of a Sparql query
+// maxage is the number of seconds old an acceptable cached result can be 
+// (default one day, 0 means it must be collected newly. false means must be 
+// collected newly and the result will not be stored. true means use cached 
+// result however old it is)
+// type is passed straight through to Arc
+// if no PREFIX lines are found in the query all known prefixes are prepended
+function sparqlquery($endpoint, $query, $type = "rows", $maxage = 86400/*1 day*/) {
+	$cachedir = "cache/sparql/" . md5($endpoint);
+
+	if (!is_dir($cachedir))
+		mkdir($cachedir) or die("couldn't make cache directory");
+
+	if (strpos($query, "PREFIX") === false)
+		$query = prefix() . $query;
+
+	$cachefile = $cachedir . "/" . md5($query . $type);
+
+	// collect from cache if available and recent enough
+	if ($maxage === true && file_exists($cachefile) || $maxage !== false && $maxage > 0 && file_exists($cachefile) && time() < filemtime($cachefile) + $maxage)
+		return unserialize(file_get_contents($cachefile));
+
+	// cache is not to be used or cached file is out of date. query endpoint
+	$config = array(
+		"remote_store_endpoint" => $endpoint,
+		"reader_timeout" => 120,
+		"ns" => $GLOBALS["ns"],
+	);
+	$store = ARC2::getRemoteStore($config);
+	$result = $store->query($query, $type);
+	if (!empty($store->errors)) {
+		foreach ($store->errors as $error)
+			trigger_error("Sparql error: " . $error, E_USER_WARNING);
+		return null;
+	}
+
+	// store result unless caching is switched off
+	if ($maxage !== false)
+		file_put_contents($cachefile, serialize($result));
+
+	return $result;
+}
+
+// query linkedgeodata.org for nearby amenities
+function nearbyamenities($type, $latlon, $radius = 10) {
+	global $ns;
+
+	// upgrade $type to an array of itself if an array wasn't given
+	if (!is_array($type))
+		$type = array($type);
+
+	// execute query
+	$rows = sparqlquery(ENDPOINT_LINKEDGEODATA, "
+		SELECT *
+		WHERE {
+			{ ?place a " . implode(" . } UNION { ?place a ", $type) . " . }
+			?place
+				a ?type ;
+				geo:geometry ?placegeo ;
+				rdfs:label ?placename .
+			FILTER(<bif:st_intersects> (?placegeo, <bif:st_point> ($latlon[1], $latlon[0]), $radius)) .
+		}
+	");
+
+	// collect results
+	$results = array();
+	foreach ($rows as $row) {
+		$coords = parsepointstring($row['placegeo']);
+		$results[$row["place"]] = array($row['placename'], $coords, distance($coords, $latlon));
+	}
+
+	// sort according to ascending distance from centre
+	usort($results, "sortbythirdelement");
+
+	return $results;
+}
+function sortbythirdelement($a, $b) {
+	$diff = $a[2] - $b[2];
+	// usort needs integers, floats aren't good enough
+	return $diff < 0 ? -1 : ($diff > 0 ? 1 : 0);
+}
+
+// parse a string
+// 	POINT(longitude latitude)
+// and return
+// 	array(float latitude, float longitude)
+function parsepointstring($string) {
+	$coords = array_map("floatVal", explode(" ", preg_replace('%^.*\((.*)\)$%', '\1', $string)));
+	return array_reverse($coords);
+}
+
+// return the distance in km between two array(lat, lon)
+function distance($latlon1, $latlon2) {
+	$angle = acos(sin(deg2rad($latlon1[0])) * sin(deg2rad($latlon2[0])) + cos(deg2rad($latlon1[0])) * cos(deg2rad($latlon2[0])) * cos(deg2rad($latlon1[1] - $latlon2[1])));
+	$earthradius_km = 6372.8;
+	return $earthradius_km * $angle;
+}
+
+function ok($message = null, $mimetype = "text/plain") {
+	if (is_null($message))
+		header("Content-Type: text/plain", true, 204);
+	else {
+		header("Content-Type: $mimetype", true, 200);
+		echo $message;
+	}
+	exit;
+}
+
+// sort an array of observations by time
+function sortbydate($a, $b) {
+	return observationdate($a) - observationdate($b);
+}
+
+// get an observation's timestamp
+function observationdate($o) {
+	$time = $o->get("ssn:observationResultTime");
+	if ($time->isNull())
+		trigger_error("tried to get the observation date of '$o' but it doesn't have one", E_USER_ERROR);
+	if (!$time->isType("time:Interval"))
+		return false;
+	return strtotime($time->get("time:hasEnd"));
+}
+
+?>
