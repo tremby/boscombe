@@ -158,7 +158,6 @@ $graph->cacheDir("cache/graphite");
 foreach ($ns as $short => $long)
 	$graph->ns($short, $long);
 $observationsURI = "http://id.semsorgrid.ecs.soton.ac.uk/observations/cco/boscombe/Hs/latest";
-$observationsURI = "http://id.semsorgrid.ecs.soton.ac.uk/observations/cco/boscombe/Hs/20110101";
 $triples = $graph->load($observationsURI);
 if ($triples < 1)
 	die("failed to load any triples from '$observationsURI'");
