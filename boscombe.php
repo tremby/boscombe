@@ -29,7 +29,7 @@ function prefix($n = null) {
 // type is passed straight through to Arc
 // if no PREFIX lines are found in the query all known prefixes are prepended
 function sparqlquery($endpoint, $query, $type = "rows", $maxage = 86400/*1 day*/) {
-	$cachedir = "cache/" . md5($endpoint);
+	$cachedir = "cache/sparql/" . md5($endpoint);
 
 	if (!is_dir($cachedir))
 		mkdir($cachedir) or die("couldn't make cache directory");
@@ -149,10 +149,12 @@ $ns = array(
 	"time" => "http://www.w3.org/2006/time#",
 	"sw" => "http://sweet.jpl.nasa.gov/2.1/sweetAll.owl#",
 	"id-semsorgrid" => "http://id.semsorgrid.ecs.soton.ac.uk/",
+	"osgb" => "http://data.ordnancesurvey.co.uk/id/",
 );
 
 // load sensor linked data
 $graph = new Graphite();
+$graph->cacheDir("cache/graphite");
 foreach ($ns as $short => $long)
 	$graph->ns($short, $long);
 $observationsURI = "http://id.semsorgrid.ecs.soton.ac.uk/observations/cco/boscombe/Hs/latest";
@@ -227,20 +229,21 @@ if (!$placename)
 $placename = array_shift($placename);
 
 // get nearby postcode
-$postcodeXML = simplexml_load_file("http://ws.geonames.org/findNearbyPostalCodes?lat=" . $coords[0] . "&lng=" . $coords[1]);
-$postcode = @array_shift($postcodeXML->xpath('/geonames/code[1]/postalcode[1]')) or null;
-if (is_null($postcode))
-	die("failed to get postcode from Geonames");
+$pcgraph = new Graphite();
+$pcgraph->cacheDir("cache/graphite");
+foreach ($ns as $short => $long)
+	$pcgraph->ns($short, $long);
+if ($pcgraph->load("http://www.uk-postcodes.com/latlng/$coords[0],$coords[1].rdf") == 0)
+	die("failed to get postcode from uk-postcodes.com");
+foreach ($pcgraph->allSubjects() as $subject)
+	$subject->loadSameAs();
+$postcode = $pcgraph->allOfType("postcode:PostcodeUnit")->current();
 
 // query O/S SPARQL endpoint for region names
 $row = sparqlquery(ENDPOINT_OS, "
 	SELECT ?euroLabel ?distLabel
 	WHERE {
-		?postcode
-			a postcode:PostcodeUnit ;
-			skos:notation \"$postcode\"^^postcode:Postcode ;
-			postcode:district ?district .
-		?district
+		<" . $postcode->get("postcode:district") . ">
 			rdfs:label ?distLabel ;
 			admingeo:inEuropeanRegion ?euroRegion .
 		?euroRegion
@@ -692,8 +695,8 @@ $modules[] = ob_get_clean();
 <h2>Data sources</h2>
 <ul>
 	<li>Sensor data: <a href="http://www.channelcoast.org">Channel Coast Observatory</a></li>
-	<li>Postcode data: <a href="http://geonames.org">Geonames</a></li>
-	<li>District/region data: <a href="http://ordnancesurvey.co.uk">Ordnance Survey</a></li>
+	<li>Nearby place name data: <a href="http://geonames.org">Geonames</a></li>
+	<li>Postcode, district, region data: <a href="http://ordnancesurvey.co.uk">Ordnance Survey</a></li>
 	<li>Road accident data: <a href="http://epp.eurostat.ec.europa.eu">Eurostat</a></li>
 	<li>Local amenity data: <a href="http://linkedgeodata.org">LinkedGeoData</a></li>
 </ul>
