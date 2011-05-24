@@ -2,10 +2,17 @@
 
 ini_set("display_errors", true);
 
+define("ENDPOINT_CCO", "http://semsorgrid.ecs.soton.ac.uk:8000/sparql/");
 define("ENDPOINT_EUROSTAT", "http://www4.wiwiss.fu-berlin.de/eurostat/sparql");
 define("ENDPOINT_OS", "http://api.talis.com/stores/ordnance-survey/services/sparql");
 define("ENDPOINT_LINKEDGEODATA", "http://linkedgeodata.org/sparql/");
 define("ENDPOINT_DBPEDIA", "http://dbpedia.org/sparql/");
+
+define("PROP_WINDWAVEHEIGHT", "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height");
+
+function uriendpart($string) {
+	return preg_replace('%.*[/#](.*?)[/#]?%', '\1', $string);
+}
 
 // return a Sparql PREFIX string, given a namespace key from the global $ns 
 // array, or many such PREFIX strings for an array of such keys
@@ -171,7 +178,7 @@ $sensorURI = $sensor->uri;
 // collect times and heights
 $observations = array();
 foreach ($graph->allOfType("ssn:Observation") as $observationNode) {
-	if ($observationNode->get("ssn:observedProperty") != "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height")
+	if ($observationNode->get("ssn:observedProperty") != PROP_WINDWAVEHEIGHT)
 		continue;
 	$timeNode = $observationNode->get("ssn:observationResultTime");
 	if (!$timeNode->isType("time:Interval"))
@@ -303,6 +310,22 @@ $regionstats = sparqlquery(ENDPOINT_EUROSTAT, "
 ", "row");
 $regionstats["injured"] = $regionstats["injuredtotal"] / $regionstats["population"];
 $regionstats["killed"] = $regionstats["killedtotal"] / $regionstats["population"];
+
+// find other sensors with the same observed property
+$otherwavesensors = sparqlquery(ENDPOINT_CCO, "
+	SELECT DISTINCT ?sensor ?sensorname
+	WHERE {
+		?obs
+			a ssn:Observation ;
+			ssn:observedProperty <" . PROP_WINDWAVEHEIGHT . "> ;
+			ssn:observedBy ?sensor ;
+		.
+		OPTIONAL {
+			?sensor rdfs:label ?sensorname .
+		}
+		FILTER (?sensor != <$sensorURI>)
+	}
+");
 
 $types_pub = array(
 	"lgdo:Pub",
@@ -500,6 +523,14 @@ $types_convenience = array(
 		.collapselink {
 			background-image: url("images/bullet_toggle_minus.png");
 		}
+		.twocol {
+			column-count: 2;
+			column-gap: 1em;
+			-moz-column-count: 2;
+			-moz-column-gap: 1em;
+			-webkit-column-count: 2;
+			-webkit-column-gap: 1em;
+		}
 	</style>
 	<script type="text/javascript">
 		$(document).ready(function() {
@@ -667,6 +698,20 @@ function amenitylist($amenities) {
 	<dt><?php echo count($shop); ?> food/drink shops</dt>
 	<dd><?php amenitylist($shop); ?></dd>
 </dl>
+<?php
+$modules[] = ob_get_clean();
+
+ob_start();
+?>
+<h2>Other wave height sensors</h2>
+<p>Other sensors found in the triplestore which measure wave height</p>
+<ul class="twocol">
+	<?php foreach ($otherwavesensors as $othersensor) { ?>
+		<li>
+			<a class="uri" href="<?php echo htmlspecialchars($othersensor["sensor"]); ?>"><?php echo htmlspecialchars(isset($othersensor["sensorname"]) ? $othersensor["sensorname"] : uriendpart($othersensor["sensor"])); ?></a></dd>
+		</li>
+	<?php } ?>
+</ul>
 <?php
 $modules[] = ob_get_clean();
 
