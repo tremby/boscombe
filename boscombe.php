@@ -56,6 +56,12 @@ $triples = $graph->load($observationsURI);
 if ($triples < 1)
 	die("failed to load any triples from '$observationsURI'");
 
+// get URI of collection
+$collectionURI = $graph->allOfType("DUL:Collection");
+if (count($collectionURI) != 1)
+	die("expected exactly 1 collection");
+$collectionURI = $collectionURI->current()->uri;
+
 // collect times and heights
 $observations = array();
 foreach ($graph->allOfType("ssn:Observation") as $observationNode) {
@@ -115,7 +121,7 @@ $chartparams = array(
 if (isset($_GET["chart"]))
 	ok(json_encode(array(
 		"src" => "http://chart.apis.google.com/chart?" . implode("&", $chartparams),
-		"source" => $observationsURI,
+		"source" => $collectionURI,
 		"prev" => is_null($prevobservation) ? null : $prevobservation->uri,
 		"next" => is_null($nextobservation) ? null : $nextobservation->uri,
 	)), "application/json");
@@ -547,7 +553,7 @@ $modules[] = ob_get_clean();
 ob_start();
 ?>
 <h2>Wave height data</h2>
-<p>Showing wave height data found at <a id="chart_source" class="uri" href="<?php echo htmlspecialchars($observationsURI); ?>"><?php echo htmlspecialchars($observationsURI); ?></a> in metres</p>
+<p>Showing wave height data in the collection <a id="chart_source" class="uri" href="<?php echo htmlspecialchars($collectionURI); ?>"><?php echo htmlspecialchars($collectionURI); ?></a> in metres</p>
 <p>
 	<a id="chart_prev" href="#">&larr;</a>
 	<img id="chart" align="middle" src="http://chart.apis.google.com/chart?<?php echo implode("&", $chartparams); ?>">
