@@ -64,7 +64,7 @@ $collectionURI = $collectionURI->current()->uri;
 
 // collect times and heights
 $observations = array();
-foreach ($graph->allOfType("ssn:Observation") as $observationNode) {
+foreach ($graph->resource($collectionURI)->all("DUL:hasMember")->allOfType("ssn:Observation") as $observationNode) {
 	if ($observationNode->get("ssn:observedProperty") != PROP_WINDWAVEHEIGHT)
 		continue;
 	if (!$observationNode->get("ssn:observationResultTime")->isType("time:Interval"))
