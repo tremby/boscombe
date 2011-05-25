@@ -143,37 +143,62 @@ $coords = array(
 	floatVal((string) $location->get("sw:coordinate1")->get("sw:hasNumericValue")),
 );
 
-// get nearby place name
-$placenameXML = simplexml_load_file("http://ws.geonames.org/findNearbyPlaceName?lat={$coords[0]}&lng={$coords[1]}");
-$placename = $placenameXML->xpath('/geonames/geoname[1]/name[1]');
-if (!$placename)
-	die("couldn't get place name from Geonames");
-$placename = array_shift($placename);
+// do we have a foaf:based_near from which we can get place name, district and 
+// region name?
+$based_near = $graph->resource($sensorURI)->get("foaf:based_near");
+$placename = null;
+$district = null;
+$euroRegion = null;
+if (!$based_near->isNull()) {
+	$based_near->load();
 
-// get nearby postcode
-$pcgraph = new Graphite();
-$pcgraph->cacheDir("cache/graphite");
-foreach ($ns as $short => $long)
-	$pcgraph->ns($short, $long);
-if ($pcgraph->load("http://www.uk-postcodes.com/latlng/$coords[0],$coords[1].rdf") == 0)
-	die("failed to get postcode from uk-postcodes.com");
-foreach ($pcgraph->allSubjects() as $subject)
-	$subject->loadSameAs();
-$postcode = $pcgraph->allOfType("postcode:PostcodeUnit")->current();
+	if ($based_near->hasLabel())
+		$placename = $based_near->label();
 
-// query O/S SPARQL endpoint for region names
-$row = sparqlquery(ENDPOINT_OS, "
-	SELECT ?euroLabel ?distLabel
-	WHERE {
-		<" . $postcode->get("postcode:district") . ">
-			rdfs:label ?distLabel ;
-			admingeo:inEuropeanRegion ?euroRegion .
-		?euroRegion
-			rdfs:label ?euroLabel .
-	}
-", "row");
-$district = $row['distLabel'];
-$euroRegion = $row['euroLabel'];
+	$based_near->get("admingeo:inDistrict")->load();
+	if ($based_near->get("admingeo:inDistrict")->hasLabel())
+		$district = $based_near->get("admingeo:inDistrict")->label();
+
+	$based_near->get("admingeo:inEuropeanRegion")->load();
+	if ($based_near->get("admingeo:inEuropeanRegion")->hasLabel())
+		$euroRegion = $based_near->get("admingeo:inEuropeanRegion")->label();
+}
+
+if (is_null($placename)) {
+	// get nearby place name
+	$placenameXML = simplexml_load_file("http://ws.geonames.org/findNearbyPlaceName?lat={$coords[0]}&lng={$coords[1]}");
+	$placename = $placenameXML->xpath('/geonames/geoname[1]/name[1]');
+	if (!$placename)
+		die("couldn't get place name from Geonames");
+	$placename = array_shift($placename);
+}
+
+if (is_null($district) || is_null($euroRegion)) {
+	// get nearby postcode
+	$pcgraph = new Graphite();
+	$pcgraph->cacheDir("cache/graphite");
+	foreach ($ns as $short => $long)
+		$pcgraph->ns($short, $long);
+	if ($pcgraph->load("http://www.uk-postcodes.com/latlng/$coords[0],$coords[1].rdf") == 0)
+		die("failed to get postcode from uk-postcodes.com");
+	foreach ($pcgraph->allSubjects() as $subject)
+		$subject->loadSameAs();
+	$postcode = $pcgraph->allOfType("postcode:PostcodeUnit")->current();
+
+	// query O/S SPARQL endpoint for region names
+	$row = sparqlquery(ENDPOINT_OS, "
+		SELECT ?euroLabel ?distLabel
+		WHERE {
+			<" . $postcode->get("postcode:district") . ">
+				rdfs:label ?distLabel ;
+				admingeo:inEuropeanRegion ?euroRegion .
+			?euroRegion
+				rdfs:label ?euroLabel .
+		}
+	", "row");
+	$district = $row['distLabel'];
+	$euroRegion = $row['euroLabel'];
+}
 
 // get national average per region
 $rows = sparqlquery(ENDPOINT_EUROSTAT, "
