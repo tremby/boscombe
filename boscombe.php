@@ -563,7 +563,19 @@ $modules[] = ob_get_clean();
 ob_start();
 ?>
 <h2>Sensor location map</h2>
-<img class="shadow" src="http://maps.google.com/maps/api/staticmap?size=300x200&center=<?php echo $coords[0]; ?>,<?php echo $coords[1]; ?>&zoom=8&maptype=hybrid&sensor=false&markers=<?php echo $coords[0]; ?>,<?php echo $coords[1]; ?>">
+<div style="margin: 0 auto; width: 187px; height: 256px; position: relative; background-image: url(uk.png);">
+	<?php
+	$width = 161;
+	$height = 256;
+	$bottom = 49.8825;
+	$top = 58.6971;
+	$left = -7.7325;
+	$right = 1.761;
+	$x = round($width * ($coords[1] - $left) / ($right - $left));
+	$y = round($height * ($coords[0] - $bottom) / ($top - $bottom));
+	?>
+	<img src="pin.png" style="position: absolute; left: <?php echo $x - 7; ?>px; bottom: <?php echo $y; ?>px;">
+</div>
 <?php
 $modules[] = ob_get_clean();
 
