@@ -84,43 +84,16 @@ $nextobservation = $observations[count($observations) - 1]->get("DUL:directlyPre
 if ($nextobservation->isNull())
 	$nextobservation = null;
 
-$timetoheight = array();
+$timesandheights = array();
 foreach ($observations as $observationNode) {
 	$timeNode = $observationNode->get("ssn:observationResultTime");
 	$time = strtotime($timeNode->get("time:hasEnd"));
-	$timetoheight[$time] = floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasResult"));
+	$timesandheights[] = array($time, floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasResult")));
 }
-ksort($timetoheight, SORT_NUMERIC); // shouldn't be necessary
-
-$keys = array_keys($timetoheight);
-$start = array_shift($keys);
-$end = array_pop($keys);
-$period = $end - $start;
-$datax = $datay = array();
-$maxheight = ceil(max($timetoheight) * 10 * 1.2) / 10;
-foreach ($timetoheight as $time => $height) {
-	$datax[] = ($time - $start) * 100 / $period;
-	$datay[] = $height * 100 / $maxheight;
-}
-$axisx = array();
-for ($time = $start; $time <= $end; $time += $period / 6)
-	$axisx[] = date("H:i", $time);
-$chartparams = array(
-	"cht=lxy", //line x-y
-	"chs=340x200", //size
-	"chco=0066cc", //data colours
-	"chm=B,99ccff,0,0,0", //fill under the line
-	"chd=t:" . implode(",", $datax) . "|" . implode(",", $datay), //data
-	"chxt=x,y,x", //visible axes
-	"chxr=0,0,100|1,0," . $maxheight, //x and y axis ranges
-	"chxl=0:|" . implode("|", $axisx) . "|2:|Time", //custom labels for axes, evenly spread, also axis titles
-	"chxp=2,50|3,50", //positions of axis titles
-	"chf=bg,s,ffffff00", //transparent background
-);
 
 if (isset($_GET["chart"]))
 	ok(json_encode(array(
-		"src" => "http://chart.apis.google.com/chart?" . implode("&", $chartparams),
+		"data" => timestamptomilliseconds($timesandheights),
 		"source" => $collectionURI,
 		"prev" => is_null($prevobservation) ? null : $prevobservation->uri,
 		"next" => is_null($nextobservation) ? null : $nextobservation->uri,
@@ -347,7 +320,8 @@ $types_convenience = array(
 <head>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 	<title><?php echo htmlspecialchars($placename); ?> surf status</title>
-	<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+	<script type="text/javascript" src="jquery.js"></script>
+	<script type="text/javascript" src="flot/jquery.flot.min.js"></script>
 	<style type="text/css">
 		body {
 			background-color: #364;
@@ -437,11 +411,12 @@ $types_convenience = array(
 			background-color: #ded;
 			padding: 0.5em;
 			-moz-box-shadow: inset 5px 5px 10px -4px #fff, 3px 3px 15px -8px #000;
+			font-size: 90%;
+			color: #454;
 		}
 		table.modules > tbody > tr > td > p {
 			text-shadow: 1px 1px 0px #fff;
 			color: #898;
-			font-size: 90%;
 		}
 		table.modules dl, table.modules ol, table.modules ul {
 			text-align: left;
@@ -471,6 +446,17 @@ $types_convenience = array(
 			-moz-column-gap: 1em;
 			-webkit-column-count: 2;
 			-webkit-column-gap: 1em;
+		}
+
+		#chart {
+			width: 340px;
+			height: 200px;
+			margin: 0 auto;
+		}
+		#injuries, #deaths {
+			width: 200px;
+			height: 110px;
+			margin: 0 auto;
 		}
 	</style>
 	<script type="text/javascript">
@@ -529,7 +515,13 @@ $types_convenience = array(
 					} else {
 						$("#chart_prev").hide();
 					}
-					$("#chart").attr("src", data.src);
+					chart.setData([{
+						data: data.data,
+						color: "#06c",
+						lines: { fill: true, fillColor: "#9cf" }
+					}]);
+					chart.setupGrid();
+					chart.draw();
 				});
 			};
 		});
@@ -580,9 +572,29 @@ ob_start();
 <h2>Wave height data</h2>
 <p>Showing wave height data in the collection <a id="chart_source" class="uri" href="<?php echo htmlspecialchars($collectionURI); ?>"><?php echo htmlspecialchars($collectionURI); ?></a> in metres</p>
 <p>
-	<a id="chart_prev" href="#">&larr;</a>
-	<img id="chart" align="middle" src="http://chart.apis.google.com/chart?<?php echo implode("&", $chartparams); ?>">
-	<a id="chart_next" href="#">&rarr;</a>
+	<div id="chart"></div>
+	<a id="chart_prev" href="#">&larr; Show earlier data</a>
+	<a id="chart_next" href="#">Show later data &rarr;</a>
+	<script type="text/javascript">
+		$(function() {
+			<?php
+			function timestamptomilliseconds($readings) {
+				$a = array();
+				foreach ($readings as $reading)
+					$a[] = array($reading[0] * 1000, $reading[1]);
+				return $a;
+			}
+			echo "var heights = " . json_encode(timestamptomilliseconds($timesandheights)) . ";";
+			?>
+			chart = $.plot($("#chart"), [{
+				data: heights,
+				color: "#06c",
+				lines: { fill: true, fillColor: "#9cf" }
+			}], {
+				xaxis: { mode: "time" }
+			});
+		});
+	</script>
 </p>
 <?php
 $modules[] = ob_get_clean();
@@ -631,12 +643,62 @@ $killedneedle = max(min(($regionstats["killed"] / $average["killed"] - 0.75) * 2
 <table>
 	<tr>
 		<td>
-			<img src="http://chart.apis.google.com/chart?chs=200x110&cht=gom&chd=t:<?php echo $injuredneedle; ?>&chco=00ff00,ffcc00,ff0000&chl=<?php echo urlencode($injured); ?>&chf=bg,s,ffffff00">
 			<h3>Injuries</h3>
+			<div id="injuries"></div>
+			<script type="text/javascript">
+				$(function() {
+					$.plot($("#injuries"), [
+						{
+							data: [[1, <?php echo $average["injured"]; ?>]],
+							bars: { show: true, barWidth: 0.75, align: "center" }
+						},
+						{
+							data: [[2, <?php echo $regionstats["injured"]; ?>]],
+							bars: { show: true, barWidth: 0.75, align: "center" }
+						}
+					], {
+						xaxis: {
+							min: 0.5,
+							max: 2.5,
+							ticks: [
+								[0, ""],
+								[1, "National average"],
+								[2, "<?php echo htmlspecialchars($euroRegion); ?>"]
+							],
+							tickLength: 0
+						}
+					});
+				});
+			</script>
 		</td>
 		<td>
-			<img src="http://chart.apis.google.com/chart?chs=200x110&cht=gom&chd=t:<?php echo $killedneedle; ?>&chco=00ff00,ffcc00,ff0000&chl=<?php echo urlencode($killed); ?>&chf=bg,s,ffffff00">
 			<h3>Deaths</h3>
+			<div id="deaths"></div>
+			<script type="text/javascript">
+				$(function() {
+					$.plot($("#deaths"), [
+						{
+							data: [[1, <?php echo $average["killed"]; ?>]],
+							bars: { show: true, barWidth: 0.75, align: "center" }
+						},
+						{
+							data: [[2, <?php echo $regionstats["killed"]; ?>]],
+							bars: { show: true, barWidth: 0.75, align: "center" }
+						}
+					], {
+						xaxis: {
+							min: 0.5,
+							max: 2.5,
+							ticks: [
+								[0, ""],
+								[1, "National average"],
+								[2, "<?php echo htmlspecialchars($euroRegion); ?>"]
+							],
+							tickLength: 0
+						}
+					});
+				});
+			</script>
 		</td>
 	</tr>
 </table>
