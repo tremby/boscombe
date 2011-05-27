@@ -2,11 +2,10 @@
 
 ini_set("display_errors", true);
 
-define("ENDPOINT_CCO", "http://semsorgrid.ecs.soton.ac.uk:8000/sparql/");
-define("ENDPOINT_EUROSTAT", "http://www4.wiwiss.fu-berlin.de/eurostat/sparql");
-define("ENDPOINT_OS", "http://api.talis.com/stores/ordnance-survey/services/sparql");
-define("ENDPOINT_LINKEDGEODATA", "http://linkedgeodata.org/sparql/");
-define("ENDPOINT_DBPEDIA", "http://dbpedia.org/sparql/");
+define("ENDPOINT_CCO", "http://195.134.71.11:9090/Registry/Query");
+define("ENDPOINT_EUROSTAT", "http://195.134.71.11:9090/Registry/Query");
+define("ENDPOINT_OS", "http://195.134.71.11:9090/Registry/Query");
+define("ENDPOINT_LINKEDGEODATA", "http://195.134.71.11:9090/Registry/Query");
 
 define("PROP_WINDWAVEHEIGHT", "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height");
 
@@ -37,6 +36,7 @@ $ns = array(
 	"eurostat" => "http://www4.wiwiss.fu-berlin.de/eurostat/resource/eurostat/",
 	"postcode" => "http://data.ordnancesurvey.co.uk/ontology/postcode/",
 	"admingeo" => "http://data.ordnancesurvey.co.uk/ontology/admingeo/",
+	"osgeometry" => "http://data.ordnancesurvey.co.uk/ontology/geometry/",
 	"skos" => "http://www.w3.org/2004/02/skos/core#",
 	"dbpedia-owl" => "http://dbpedia.org/ontology/",
 	"ssn" => "http://purl.oclc.org/NET/ssnx/ssn#",
@@ -237,9 +237,15 @@ $otherwavesensors = sparqlquery(ENDPOINT_CCO, "
 		OPTIONAL {
 			?sensor rdfs:label ?sensorname .
 		}
-		FILTER (?sensor != <$sensorURI>)
 	}
 ");
+function removesensor($s) { // Registry endpoint doesn't like filtering out this sensor at the Sparql level
+	global $sensorURI;
+	if ($s["sensor"] == $sensorURI)
+		return false;
+	return true;
+}
+$otherwavesensors = array_filter($otherwavesensors, "removesensor");
 
 $types_pub = array(
 	"lgdo:Pub",
@@ -616,7 +622,7 @@ ob_start();
 <h2>Nearby car parks</h2>
 <table>
 	<?php
-	$amenities = nearbyamenities($types_parking, $coords, 5);
+	$amenities = nearbyamenities($types_parking, $based_near->uri, 5);
 	$i = 0;
 	foreach ($amenities as $amenity) {
 		if ($i++ == 6)
@@ -626,10 +632,12 @@ ob_start();
 		<tr>
 			<td><?php echo htmlspecialchars($amenity[0]); ?></td>
 			<td>
-				<div class="barcontainer">
-					<div class="bar" style="width: <?php echo $distance * 10; ?>%;"></div>
-					<div class="overbar"><?php echo sprintf("%.03f", $distance); ?>km</div>
-				</div>
+				<?php if (!is_null($distance)) { ?>
+					<div class="barcontainer">
+						<div class="bar" style="width: <?php echo $distance * 10; ?>%;"></div>
+						<div class="overbar"><?php echo sprintf("%.03f", $distance); ?>km</div>
+					</div>
+				<?php } ?>
 			</td>
 		</tr>
 	<?php } ?>
@@ -722,10 +730,10 @@ ob_start();
 <h2>Food and drink</h2>
 <p>Places to get food and drink within 3km</p>
 <?php
-$pubbar = nearbyamenities($types_pub, $coords, 3);
-$cafe = nearbyamenities($types_cafe, $coords, 3);
-$restaurant = nearbyamenities($types_food, $coords, 3);
-$shop = nearbyamenities($types_store, $coords, 3);
+$pubbar = nearbyamenities($types_pub, $based_near->uri, 3);
+$cafe = nearbyamenities($types_cafe, $based_near->uri, 3);
+$restaurant = nearbyamenities($types_food, $based_near->uri, 3);
+$shop = nearbyamenities($types_store, $based_near->uri, 3);
 function amenitylist($amenities) {
 	global $coords;
 	if (is_null($amenities) || count($amenities) == 0) { ?>
@@ -738,7 +746,9 @@ function amenitylist($amenities) {
 		<?php foreach ($amenities as $amenity) { ?>
 			<li>
 				<?php echo htmlspecialchars($amenity[0]); ?>
-				<span class="hint">(<?php echo sprintf("%.02f", distance($coords, $amenity[1])); ?>km)</span>
+				<?php if (!is_null($amenity[1])) { ?>
+					<span class="hint">(<?php echo sprintf("%.02f", distance($coords, $amenity[1])); ?>km)</span>
+				<?php } ?>
 			</li>
 		<?php } ?>
 	</ul>
@@ -873,7 +883,7 @@ function sparqlquery($endpoint, $query, $type = "rows", $maxage = 86400/*1 day*/
 }
 
 // query linkedgeodata.org for nearby amenities
-function nearbyamenities($type, $latlon, $radius = 10) {
+function nearbyamenities($type, $placeURI, $radius = 10) {
 	global $ns;
 
 	// upgrade $type to an array of itself if an array wasn't given
@@ -889,7 +899,9 @@ function nearbyamenities($type, $latlon, $radius = 10) {
 				a ?type ;
 				geo:geometry ?placegeo ;
 				rdfs:label ?placename .
-			FILTER(<bif:st_intersects> (?placegeo, <bif:st_point> ($latlon[1], $latlon[0]), $radius)) .
+			<$placeURI> osgeometry:extent ?osspatialextent .
+			?osspatialextent geo:geometry ?osgeometry .
+			FILTER(DISTANCE(?placegeo, ?osgeometry) < $radius) .
 		}
 	");
 
@@ -897,7 +909,7 @@ function nearbyamenities($type, $latlon, $radius = 10) {
 	$results = array();
 	foreach ($rows as $row) {
 		$coords = parsepointstring($row['placegeo']);
-		$results[$row["place"]] = array($row['placename'], $coords, distance($coords, $latlon));
+		$results[$row["place"]] = array($row["placename"], $coords, distance($coords, parsepointstring($row["osgeometry"])));
 	}
 
 	// sort according to ascending distance from centre
@@ -906,6 +918,11 @@ function nearbyamenities($type, $latlon, $radius = 10) {
 	return $results;
 }
 function sortbythirdelement($a, $b) {
+	if (!isset($a[2]))
+		return -1;
+	if (!isset($b[2]))
+		return 1;
+
 	$diff = $a[2] - $b[2];
 	// usort needs integers, floats aren't good enough
 	return $diff < 0 ? -1 : ($diff > 0 ? 1 : 0);
@@ -916,12 +933,16 @@ function sortbythirdelement($a, $b) {
 // and return
 // 	array(float latitude, float longitude)
 function parsepointstring($string) {
+	if (!is_string($string))
+		return null;
 	$coords = array_map("floatVal", explode(" ", preg_replace('%^.*\((.*)\)$%', '\1', $string)));
 	return array_reverse($coords);
 }
 
 // return the distance in km between two array(lat, lon)
 function distance($latlon1, $latlon2) {
+	if (is_null($latlon1) || is_null($latlon2))
+		return null;
 	$angle = acos(sin(deg2rad($latlon1[0])) * sin(deg2rad($latlon2[0])) + cos(deg2rad($latlon1[0])) * cos(deg2rad($latlon2[0])) * cos(deg2rad($latlon1[1] - $latlon2[1])));
 	$earthradius_km = 6372.8;
 	return $earthradius_km * $angle;
