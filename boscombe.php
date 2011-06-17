@@ -835,15 +835,14 @@ function prefix($n = null) {
 // collected newly and the result will not be stored. true means use cached 
 // result however old it is)
 // type is passed straight through to Arc
-// if no PREFIX lines are found in the query all known prefixes are prepended
+// missing prefixes are added
 function sparqlquery($endpoint, $query, $type = "rows", $maxage = 86400/*1 day*/) {
 	$cachedir = "cache/sparql/" . md5($endpoint);
 
 	if (!is_dir($cachedir))
 		mkdir($cachedir) or die("couldn't make cache directory");
 
-	if (strpos($query, "PREFIX") === false)
-		$query = prefix() . $query;
+	$query = addmissingprefixes($query);
 
 	$cachefile = $cachedir . "/" . md5($query . $type);
 
@@ -870,6 +869,41 @@ function sparqlquery($endpoint, $query, $type = "rows", $maxage = 86400/*1 day*/
 		file_put_contents($cachefile, serialize($result));
 
 	return $result;
+}
+
+// add missing PREFIX declarations to a Sparql query
+function addmissingprefixes($query) {
+	global $ns;
+
+	// find existing prefix lines
+	preg_match_all('%^\s*PREFIX\s+(.*?):\s*<.*>\s*$%m', $query, $matches);
+	$existing = $matches[1];
+
+	// get query without prefix declarations
+	$queryonly = $query;
+	if (count($existing)) {
+		if (strpos($query, "\nPREFIX") !== false)
+			$queryonly = substr($query, strlen($query) - strpos(strrev($query), strrev("\nPREFIX")));
+		$queryonly = preg_replace('%^[^\n]*\n%', "", $queryonly);
+	}
+
+	// find namespaces used in query
+	preg_match_all('%(?:^|[\s,;])([^\s:<]*):%m', $queryonly, $matches);
+	$used = array_unique($matches[1]);
+
+	// list of namespaces to add
+	$add = array();
+	foreach ($used as $short) {
+		if (in_array($short, $existing))
+			continue;
+		if (!in_array($short, array_keys($ns)))
+			trigger_error("Namespace '$short' used in Sparql query not found in global namespaces array", E_USER_WARNING);
+		else
+			$add[] = $short;
+	}
+
+	$query = prefix($add) . $query;
+	return $query;
 }
 
 // query linkedgeodata.org for nearby amenities
