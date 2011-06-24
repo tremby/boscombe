@@ -40,6 +40,7 @@ $ns = array(
 	"skos" => "http://www.w3.org/2004/02/skos/core#",
 	"dbpedia-owl" => "http://dbpedia.org/ontology/",
 	"ssn" => "http://purl.oclc.org/NET/ssnx/ssn#",
+	"ssne" => "http://www.semsorgrid4env.eu/ontologies/SsnExtension.owl#",
 	"DUL" => "http://www.loa-cnr.it/ontologies/DUL.owl#",
 	"time" => "http://www.w3.org/2006/time#",
 	"sw" => "http://sweet.jpl.nasa.gov/2.1/sweetAll.owl#",
@@ -88,7 +89,7 @@ $timesandheights = array();
 foreach ($observations as $observationNode) {
 	$timeNode = $observationNode->get("ssn:observationResultTime");
 	$time = strtotime($timeNode->get("time:hasEnd"));
-	$timesandheights[] = array($time, floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasResult")));
+	$timesandheights[] = array($time, floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")));
 }
 
 if (isset($_GET["chart"]))
