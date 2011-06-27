@@ -16,7 +16,7 @@ if (isset($_GET["uri"]))
 
 // include the ARC2 libraries
 require_once "arc2/ARC2.php";
-require_once "Graphite.php";
+require_once "Graphite/graphite/Graphite.php";
 
 $ns = array(
 	"geonames" => "http://www.geonames.org/ontology#",
@@ -321,7 +321,7 @@ $types_convenience = array(
 <head>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 	<title><?php echo htmlspecialchars($placename); ?> surf status</title>
-	<script type="text/javascript" src="jquery.js"></script>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.min.js"></script>
 	<script type="text/javascript" src="flot/jquery.flot.min.js"></script>
 	<style type="text/css">
 		body {
