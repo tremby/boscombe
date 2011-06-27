@@ -156,7 +156,7 @@ visually.
 		if (!$timeNode->isType("time:Interval"))
 			continue;
 		$time = strtotime($timeNode->get("time:hasEnd"));
-		$observations[$time] = floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasResult"));
+		$observations[$time] = floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue"));
 	}
 	ksort($observations, SORT_NUMERIC);
 

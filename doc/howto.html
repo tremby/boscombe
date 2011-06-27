@@ -152,7 +152,7 @@ foreach ($graph-&gt;allOfType("ssn:Observation") as $observationNode) {
     if (!$timeNode-&gt;isType("time:Interval"))
         continue;
     $time = strtotime($timeNode-&gt;get("time:hasEnd"));
-	$observations[$time] = floatVal((string) $observationNode-&gt;get("ssn:observationResult")-&gt;get("ssn:hasValue")-&gt;get("ssne:hasQuantityValue"));
+    $observations[$time] = floatVal((string) $observationNode-&gt;get("ssn:observationResult")-&gt;get("ssn:hasValue")-&gt;get("ssne:hasQuantityValue"));
 }
 ksort($observations, SORT_NUMERIC);
 </code></pre>
