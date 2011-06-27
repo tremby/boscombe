@@ -14,19 +14,20 @@ Scripting language and libraries
 
 This example uses the [PHP][php] scripting language. For Sparql queries and RDF 
 manipulation it uses the [Arc2][arc2] library and, for ease of coding and 
-readability, [Graphite][graphite]. The [Google Chart API][gcapi] is used for 
-charts and the [Google Static Maps API][gsmapi] and [Openlayers][openlayers] for 
-mapping.
+readability, [Graphite][graphite]. The [Flot][flot] Javascript library (a 
+[Jquery][jquery] plugin) is used for charts and the [Google Static Maps 
+API][gsmapi] and [Openlayers][openlayers] for mapping.
 
 Another useful tool is an RDF browser such as the [Q&D RDF Browser][qdbrowser].
 
 [php]: http://php.net/
 [arc2]: http://arc.semsol.org/
 [graphite]: http://graphite.ecs.soton.ac.uk/
-[gcapi]: http://code.google.com/apis/chart/
+[flot]: http://code.google.com/p/flot/
+[jquery]: http://jquery.com/
 [gsmapi]: http://code.google.com/apis/maps/documentation/staticmaps/
-[qdbrowser]: http://graphite.ecs.soton.ac.uk/browser/
 [openlayers]: http://openlayers.org/
+[qdbrowser]: http://graphite.ecs.soton.ac.uk/browser/
 
 First we load in the Arc2 and Graphite libraries and set up Graphite with a list 
 of namespaces for coding simplicity.
@@ -36,6 +37,7 @@ of namespaces for coding simplicity.
 	$graph = new Graphite();
 	$graph->ns("id-semsorgrid", "http://id.semsorgrid.ecs.soton.ac.uk/");
 	$graph->ns("ssn", "http://purl.oclc.org/NET/ssnx/ssn#");
+	$graph->ns("ssne", "http://www.semsorgrid4env.eu/ontologies/SsnExtension.owl#");
 	$graph->ns("DUL", "http://www.loa-cnr.it/ontologies/DUL.owl#");
 	$graph->ns("time", "http://www.w3.org/2006/time#");
 
@@ -135,72 +137,61 @@ To collect all wave height observations we query the graph for all nodes of type
 not that which we are looking for (just in case we have other observation types 
 in our graph).
 
-Each observation corresponds to a particular time interval so we need to collect 
-the time (in this example we'll associate the end of the time interval -- 
-`time:hasEnd` -- with the reading) as well as the wave height observation 
-itself. The code snippet below also skips any observations whose 
-`ssn:observationResultTime` property doesn't point to a node of type 
-`time:Interval`, but it would be trivial to also parse nodes of different time 
-classes.
+We can then sort those observations by time using a helper function. This helper 
+function compares the `time:Interval` nodes linked to by each observation's 
+`ssn:observationResultTime` property.
 
-Finally in this snippet the array of observations is sorted by time.
-
-Again, to see how the traversal is built up it's easiest to inspect the graph 
+Again, to see how the traversals are built up it's easiest to inspect the graph 
 visually.
 
+	// collect observations
 	$observations = array();
-	foreach ($graph->allOfType("ssn:Observation") as $observationNode) {
+	foreach ($graph->resource($collectionURI)->all("DUL:hasMember")->allOfType("ssn:Observation") as $observationNode) {
 		if ($observationNode->get("ssn:observedProperty") != "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height")
 			continue;
-		$timeNode = $observationNode->get("ssn:observationResultTime");
-		if (!$timeNode->isType("time:Interval"))
+		if (!$observationNode->get("ssn:observationResultTime")->isType("time:Interval"))
 			continue;
-		$time = strtotime($timeNode->get("time:hasEnd"));
-		$observations[$time] = floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue"));
+		$observations[] = $observationNode;
 	}
-	ksort($observations, SORT_NUMERIC);
+	usort($observations, "sortbydate");
+
+	// sort an array of observations by time
+	function sortbydate($a, $b) {
+		return strtotime($a->get("ssn:observationResultTime")->get("time:hasBeginning"))
+			- strtotime($b->get("ssn:observationResultTime")->get("time:hasBeginning"));
+	}
 
 Visualizing the data
 --------------------
 
-The array resulting from the code above can be used to produce a chart of the 
-wave heights. Explaining the snippet below is out of the scope of this document, 
-but it uses the Google Chart API to produce a line graph of wave height against 
-time.
+Now that we have the readings in order we can produce a chart of the wave 
+heights. Explaining the snippet below is out of the scope of this document, but 
+it uses Flot to produce a line graph of wave height against time.
 
-	// organize data
-	$keys = array_keys($observations);
-	$start = array_shift($keys);
-	$end = array_pop($keys);
-	$period = $end - $start;
-	$datax = $datay = array();
-	$maxheight = ceil(max($observations) * 10 * 1.2) / 10;
-	foreach ($observations as $time => $height) {
-		$datax[] = ($time - $start) * 100 / $period;
-		$datay[] = $height * 100 / $maxheight;
-	}
+	<div id="chart"></div>
+	<a id="chart_prev" href="#">&larr; Show earlier data</a>
+	<a id="chart_next" href="#">Show later data &rarr;</a>
+	<script type="text/javascript">
+		$(function() {
+			<?php
+			$timesandheights = array();
+			foreach ($observations as $observationNode) {
+				$timeNode = $observationNode->get("ssn:observationResultTime");
+				$time = strtotime($timeNode->get("time:hasBeginning"));
+				$timesandheights[] = array($time * 1000, floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")));
+			}
 
-	// x axis labels
-	$axisx = array();
-	for ($time = $start; $time <= $end; $time += $period / 6)
-		$axisx[] = date("H:i", $time);
-
-	// parameters for Google Chart API
-	$chartparams = array(
-		"cht=lxy", //line x-y
-		"chs=340x200", //size
-		"chco=0066cc", //data colours
-		"chm=B,99ccff,0,0,0", //fill under the line
-		"chd=t:" . implode(",", $datax) . "|" . implode(",", $datay), //data
-		"chxt=x,y,x", //visible axes
-		"chxr=0,0,100|1,0," . $maxheight, //x and y axis ranges
-		"chxl=0:|" . implode("|", $axisx) . "|2:|Time", //custom labels for axes, evenly spread, also axis titles
-		"chxp=2,50|3,50", //positions of axis titles
-		"chf=bg,s,ffffff00", //transparent background
-	);
-
-	// output chart
-	echo '<img src="http://chart.apis.google.com/chart?' . implode("&", $chartparams) . '">';
+			echo "var heights = " . json_encode($timesandheights) . ";";
+			?>
+			chart = $.plot($("#chart"), [{
+				data: heights,
+				color: "#06c",
+				lines: { fill: true, fillColor: "#9cf" }
+			}], {
+				xaxis: { mode: "time" }
+			});
+		});
+	</script>
 
 It's easy to show a map with the sensor's position highlighted, too: the 
 following uses the Google Static Maps API to do this.
@@ -211,17 +202,21 @@ Fetching related data from other data sources
 ---------------------------------------------
 
 We can get the name of a nearby place and the nearest post code from the web 
-services provided by [Geonames](http://www.geonames.org/). Geonames returns XML 
-which is easy to parse with PHP. Again, explaining how the external API call 
-works isn't in the scope of this document.
+services provided by [Geonames](http://www.geonames.org/) and [UK 
+Postcodes](http://www.uk-postcodes.com/). Geonames returns XML and UK Postcodes 
+can return RDF, both of which are easy to parse. Again, explaining how the 
+external API calls work isn't in the scope of this document.
 
 	// get nearby place name
 	$placenameXML = simplexml_load_file("http://ws.geonames.org/findNearbyPlaceName?lat={$coords[0]}&lng={$coords[1]}");
 	$placename = array_shift($placenameXML->xpath('/geonames/geoname[1]/name[1]'));
 
 	// get nearby postcode
-	$postcodeXML = simplexml_load_file("http://ws.geonames.org/findNearbyPostalCodes?lat=" . $coords[0] . "&lng=" . $coords[1]);
-	$postcode = array_shift($postcodeXML->xpath('/geonames/code[1]/postalcode[1]'));
+	$pcgraph = new Graphite();
+	$pcgraph->load("http://www.uk-postcodes.com/latlng/{$coords[0]},{$coords[1]}.rdf");
+	foreach ($pcgraph->allSubjects() as $subject)
+		$subject->loadSameAs();
+	$postcode = $pcgraph->allOfType("postcode:PostcodeUnit")->current();
 
 The postcode is used in the surf status mashup to fetch the British region name 
 from Ordnance Survey, which in turn is used to fetch population and traffic 
@@ -257,7 +252,8 @@ the surf status mashup also locates nearby pubs, cafés and shops.
 Finished mashup
 ---------------
 
-The finished mashup, once styled, looks something like the screenshot shown 
-(with only three readings so far that day).
+The finished mashup, once styled, looks something like the screenshot shown. 
+This version doesn't use Google Maps and when it was taken there were only two 
+wave height sensors being tracked.
 
 ![Finished mashup screenshot](screenshot.png)

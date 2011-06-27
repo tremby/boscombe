@@ -12,9 +12,9 @@ nearby amenities.</p>
 
 <p>This example uses the <a href="http://php.net/">PHP</a> scripting language. For Sparql queries and RDF 
 manipulation it uses the <a href="http://arc.semsol.org/">Arc2</a> library and, for ease of coding and 
-readability, <a href="http://graphite.ecs.soton.ac.uk/">Graphite</a>. The <a href="http://code.google.com/apis/chart/">Google Chart API</a> is used for 
-charts and the <a href="http://code.google.com/apis/maps/documentation/staticmaps/">Google Static Maps API</a> and <a href="http://openlayers.org/">Openlayers</a> for 
-mapping.</p>
+readability, <a href="http://graphite.ecs.soton.ac.uk/">Graphite</a>. The <a href="http://code.google.com/p/flot/">Flot</a> Javascript library (a 
+<a href="http://jquery.com/">Jquery</a> plugin) is used for charts and the <a href="http://code.google.com/apis/maps/documentation/staticmaps/">Google Static Maps 
+API</a> and <a href="http://openlayers.org/">Openlayers</a> for mapping.</p>
 
 <p>Another useful tool is an RDF browser such as the <a href="http://graphite.ecs.soton.ac.uk/browser/">Q&amp;D RDF Browser</a>.</p>
 
@@ -26,6 +26,7 @@ require_once "Graphite.php";
 $graph = new Graphite();
 $graph-&gt;ns("id-semsorgrid", "http://id.semsorgrid.ecs.soton.ac.uk/");
 $graph-&gt;ns("ssn", "http://purl.oclc.org/NET/ssnx/ssn#");
+$graph-&gt;ns("ssne", "http://www.semsorgrid4env.eu/ontologies/SsnExtension.owl#");
 $graph-&gt;ns("DUL", "http://www.loa-cnr.it/ontologies/DUL.owl#");
 $graph-&gt;ns("time", "http://www.w3.org/2006/time#");
 </code></pre>
@@ -131,72 +132,61 @@ $coords = array(
 not that which we are looking for (just in case we have other observation types 
 in our graph).</p>
 
-<p>Each observation corresponds to a particular time interval so we need to collect 
-the time (in this example we'll associate the end of the time interval -- 
-<code>time:hasEnd</code> -- with the reading) as well as the wave height observation 
-itself. The code snippet below also skips any observations whose 
-<code>ssn:observationResultTime</code> property doesn't point to a node of type 
-<code>time:Interval</code>, but it would be trivial to also parse nodes of different time 
-classes.</p>
+<p>We can then sort those observations by time using a helper function. This helper 
+function compares the <code>time:Interval</code> nodes linked to by each observation's 
+<code>ssn:observationResultTime</code> property.</p>
 
-<p>Finally in this snippet the array of observations is sorted by time.</p>
-
-<p>Again, to see how the traversal is built up it's easiest to inspect the graph 
+<p>Again, to see how the traversals are built up it's easiest to inspect the graph 
 visually.</p>
 
-<pre><code>$observations = array();
-foreach ($graph-&gt;allOfType("ssn:Observation") as $observationNode) {
+<pre><code>// collect observations
+$observations = array();
+foreach ($graph-&gt;resource($collectionURI)-&gt;all("DUL:hasMember")-&gt;allOfType("ssn:Observation") as $observationNode) {
     if ($observationNode-&gt;get("ssn:observedProperty") != "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height")
         continue;
-    $timeNode = $observationNode-&gt;get("ssn:observationResultTime");
-    if (!$timeNode-&gt;isType("time:Interval"))
+    if (!$observationNode-&gt;get("ssn:observationResultTime")-&gt;isType("time:Interval"))
         continue;
-    $time = strtotime($timeNode-&gt;get("time:hasEnd"));
-    $observations[$time] = floatVal((string) $observationNode-&gt;get("ssn:observationResult")-&gt;get("ssn:hasValue")-&gt;get("ssne:hasQuantityValue"));
+    $observations[] = $observationNode;
 }
-ksort($observations, SORT_NUMERIC);
+usort($observations, "sortbydate");
+
+// sort an array of observations by time
+function sortbydate($a, $b) {
+    return strtotime($a-&gt;get("ssn:observationResultTime")-&gt;get("time:hasBeginning"))
+        - strtotime($b-&gt;get("ssn:observationResultTime")-&gt;get("time:hasBeginning"));
+}
 </code></pre>
 
 <h2>Visualizing the data</h2>
 
-<p>The array resulting from the code above can be used to produce a chart of the 
-wave heights. Explaining the snippet below is out of the scope of this document, 
-but it uses the Google Chart API to produce a line graph of wave height against 
-time.</p>
+<p>Now that we have the readings in order we can produce a chart of the wave 
+heights. Explaining the snippet below is out of the scope of this document, but 
+it uses Flot to produce a line graph of wave height against time.</p>
 
-<pre><code>// organize data
-$keys = array_keys($observations);
-$start = array_shift($keys);
-$end = array_pop($keys);
-$period = $end - $start;
-$datax = $datay = array();
-$maxheight = ceil(max($observations) * 10 * 1.2) / 10;
-foreach ($observations as $time =&gt; $height) {
-    $datax[] = ($time - $start) * 100 / $period;
-    $datay[] = $height * 100 / $maxheight;
-}
+<pre><code>&lt;div id="chart"&gt;&lt;/div&gt;
+&lt;a id="chart_prev" href="#"&gt;&amp;larr; Show earlier data&lt;/a&gt;
+&lt;a id="chart_next" href="#"&gt;Show later data &amp;rarr;&lt;/a&gt;
+&lt;script type="text/javascript"&gt;
+    $(function() {
+        &lt;?php
+        $timesandheights = array();
+        foreach ($observations as $observationNode) {
+            $timeNode = $observationNode-&gt;get("ssn:observationResultTime");
+            $time = strtotime($timeNode-&gt;get("time:hasBeginning"));
+            $timesandheights[] = array($time * 1000, floatVal((string) $observationNode-&gt;get("ssn:observationResult")-&gt;get("ssn:hasValue")-&gt;get("ssne:hasQuantityValue")));
+        }
 
-// x axis labels
-$axisx = array();
-for ($time = $start; $time &lt;= $end; $time += $period / 6)
-    $axisx[] = date("H:i", $time);
-
-// parameters for Google Chart API
-$chartparams = array(
-    "cht=lxy", //line x-y
-    "chs=340x200", //size
-    "chco=0066cc", //data colours
-    "chm=B,99ccff,0,0,0", //fill under the line
-    "chd=t:" . implode(",", $datax) . "|" . implode(",", $datay), //data
-    "chxt=x,y,x", //visible axes
-    "chxr=0,0,100|1,0," . $maxheight, //x and y axis ranges
-    "chxl=0:|" . implode("|", $axisx) . "|2:|Time", //custom labels for axes, evenly spread, also axis titles
-    "chxp=2,50|3,50", //positions of axis titles
-    "chf=bg,s,ffffff00", //transparent background
-);
-
-// output chart
-echo '&lt;img src="http://chart.apis.google.com/chart?' . implode("&amp;", $chartparams) . '"&gt;';
+        echo "var heights = " . json_encode($timesandheights) . ";";
+        ?&gt;
+        chart = $.plot($("#chart"), [{
+            data: heights,
+            color: "#06c",
+            lines: { fill: true, fillColor: "#9cf" }
+        }], {
+            xaxis: { mode: "time" }
+        });
+    });
+&lt;/script&gt;
 </code></pre>
 
 <p>It's easy to show a map with the sensor's position highlighted, too: the 
@@ -208,17 +198,21 @@ following uses the Google Static Maps API to do this.</p>
 <h2>Fetching related data from other data sources</h2>
 
 <p>We can get the name of a nearby place and the nearest post code from the web 
-services provided by <a href="http://www.geonames.org/">Geonames</a>. Geonames returns XML 
-which is easy to parse with PHP. Again, explaining how the external API call 
-works isn't in the scope of this document.</p>
+services provided by <a href="http://www.geonames.org/">Geonames</a> and <a href="http://www.uk-postcodes.com/">UK 
+Postcodes</a>. Geonames returns XML and UK Postcodes 
+can return RDF, both of which are easy to parse. Again, explaining how the 
+external API calls work isn't in the scope of this document.</p>
 
 <pre><code>// get nearby place name
 $placenameXML = simplexml_load_file("http://ws.geonames.org/findNearbyPlaceName?lat={$coords[0]}&amp;lng={$coords[1]}");
 $placename = array_shift($placenameXML-&gt;xpath('/geonames/geoname[1]/name[1]'));
 
 // get nearby postcode
-$postcodeXML = simplexml_load_file("http://ws.geonames.org/findNearbyPostalCodes?lat=" . $coords[0] . "&amp;lng=" . $coords[1]);
-$postcode = array_shift($postcodeXML-&gt;xpath('/geonames/code[1]/postalcode[1]'));
+$pcgraph = new Graphite();
+$pcgraph-&gt;load("http://www.uk-postcodes.com/latlng/{$coords[0]},{$coords[1]}.rdf");
+foreach ($pcgraph-&gt;allSubjects() as $subject)
+    $subject-&gt;loadSameAs();
+$postcode = $pcgraph-&gt;allOfType("postcode:PostcodeUnit")-&gt;current();
 </code></pre>
 
 <p>The postcode is used in the surf status mashup to fetch the British region name 
@@ -255,7 +249,8 @@ the surf status mashup also locates nearby pubs, cafés and shops.</p>
 
 <h2>Finished mashup</h2>
 
-<p>The finished mashup, once styled, looks something like the screenshot shown 
-(with only three readings so far that day).</p>
+<p>The finished mashup, once styled, looks something like the screenshot shown. 
+This version doesn't use Google Maps and when it was taken there were only two 
+wave height sensors being tracked.</p>
 
 <p><img src="screenshot.png" alt="Finished mashup screenshot" /></p>

@@ -49,10 +49,8 @@ $ns = array(
 );
 
 // load sensor linked data
-$graph = new Graphite();
+$graph = new Graphite($ns);
 $graph->cacheDir("cache/graphite");
-foreach ($ns as $short => $long)
-	$graph->ns($short, $long);
 $triples = $graph->load($observationsURI);
 if ($triples < 1)
 	die("failed to load any triples from '$observationsURI'");
@@ -63,7 +61,7 @@ if (count($collectionURI) != 1)
 	die("expected exactly 1 collection");
 $collectionURI = $collectionURI->current()->uri;
 
-// collect times and heights
+// collect observations
 $observations = array();
 foreach ($graph->resource($collectionURI)->all("DUL:hasMember")->allOfType("ssn:Observation") as $observationNode) {
 	if ($observationNode->get("ssn:observedProperty") != PROP_WINDWAVEHEIGHT)
@@ -88,7 +86,7 @@ if ($nextobservation->isNull())
 $timesandheights = array();
 foreach ($observations as $observationNode) {
 	$timeNode = $observationNode->get("ssn:observationResultTime");
-	$time = strtotime($timeNode->get("time:hasEnd"));
+	$time = strtotime($timeNode->get("time:hasBeginning"));
 	$timesandheights[] = array($time, floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")));
 }
 
@@ -155,10 +153,8 @@ if (is_null($placename)) {
 
 if (is_null($district) || is_null($euroRegion)) {
 	// get nearby postcode
-	$pcgraph = new Graphite();
+	$pcgraph = new Graphite($ns);
 	$pcgraph->cacheDir("cache/graphite");
-	foreach ($ns as $short => $long)
-		$pcgraph->ns($short, $long);
 	if ($pcgraph->load("http://www.uk-postcodes.com/latlng/$coords[0],$coords[1].rdf") == 0)
 		die("failed to get postcode from uk-postcodes.com");
 	foreach ($pcgraph->allSubjects() as $subject)
@@ -807,7 +803,8 @@ $modules[] = ob_get_clean();
 <ul>
 	<li>Sensor data: <a href="http://www.channelcoast.org">Channel Coast Observatory</a></li>
 	<li>Nearby place name data: <a href="http://geonames.org">Geonames</a></li>
-	<li>Postcode, district, region data: <a href="http://ordnancesurvey.co.uk">Ordnance Survey</a></li>
+	<li>Postcode data: <a href="http://www.uk-postcodes.com">UK Postcodes</a></li>
+	<li>District, region data: <a href="http://ordnancesurvey.co.uk">Ordnance Survey</a></li>
 	<li>Road accident data: <a href="http://epp.eurostat.ec.europa.eu">Eurostat</a></li>
 	<li>Local amenity data: <a href="http://linkedgeodata.org">LinkedGeoData</a></li>
 </ul>
@@ -990,7 +987,7 @@ function observationdate($o) {
 		trigger_error("tried to get the observation date of '$o' but it doesn't have one", E_USER_ERROR);
 	if (!$time->isType("time:Interval"))
 		return false;
-	return strtotime($time->get("time:hasEnd"));
+	return strtotime($time->get("time:hasBeginning"));
 }
 
 ?>
