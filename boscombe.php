@@ -620,7 +620,7 @@ ob_start();
 			<td>
 				<div class="barcontainer">
 					<div class="bar" style="width: <?php echo $distance * 10; ?>%;"></div>
-					<div class="overbar"><?php echo sprintf("%.03f", $distance); ?>km</div>
+					<div class="overbar"><?php echo sprintf("%.01f", $distance); ?>km</div>
 				</div>
 			</td>
 		</tr>
@@ -730,7 +730,7 @@ function amenitylist($amenities) {
 		<?php foreach ($amenities as $amenity) { ?>
 			<li>
 				<?php echo htmlspecialchars($amenity[0]); ?>
-				<span class="hint">(<?php echo sprintf("%.02f", distance($coords, $amenity[1])); ?>km)</span>
+				<span class="hint">(<?php echo sprintf("%.01f", distance($coords, $amenity[1])); ?>km)</span>
 			</li>
 		<?php } ?>
 	</ul>
