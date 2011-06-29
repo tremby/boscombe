@@ -467,6 +467,7 @@ $types_convenience = array(
 				}
 			};
 			$("dl.single > dd").hide();
+			$("dl.single > dt:first-child + dd").show();
 			$("dl.single > dt").each(function() {
 				$(this).html("<a class=\"expandlink\" href=\"#\">" + $(this).html() + "</a>");
 			});
