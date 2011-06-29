@@ -2,5 +2,3 @@ cache/sparql/*
 !cache/sparql/README
 cache/graphite/*
 !cache/graphite/README
-cache/geonames/*
-!cache/geonames/README

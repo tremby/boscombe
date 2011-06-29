@@ -136,21 +136,6 @@ if (!$based_near->isNull()) {
 		$euroRegion = $based_near->get("admingeo:inEuropeanRegion")->label();
 }
 
-if (is_null($placename)) {
-	// get nearby place name
-	$cachefile = "cache/geonames/" . md5($coords[0] . "," . $coords[1]);
-	if (file_exists($cachefile) && time() - filemtime($cachefile) < 24 * 60 * 60)
-		$placename = file_get_contents($cachefile);
-	else {
-		$placenameXML = simplexml_load_file("http://ws.geonames.org/findNearbyPlaceName?lat={$coords[0]}&lng={$coords[1]}");
-		$placename = $placenameXML->xpath('/geonames/geoname[1]/name[1]');
-		if (!$placename)
-			die("couldn't get place name from Geonames");
-		$placename = array_shift($placename);
-		file_put_contents($cachefile, $placename);
-	}
-}
-
 if (is_null($district) || is_null($euroRegion)) {
 	// get nearby postcode
 	$pcgraph = new Graphite($ns);
@@ -175,6 +160,10 @@ if (is_null($district) || is_null($euroRegion)) {
 	$district = $row['distLabel'];
 	$euroRegion = $row['euroLabel'];
 }
+
+// fall back to district name if we don't have a place name yet
+if (is_null($placename))
+	$placename = $district;
 
 // get national average per region
 $rows = sparqlquery(ENDPOINT_EUROSTAT, "
