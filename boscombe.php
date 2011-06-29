@@ -218,8 +218,8 @@ $regionstats["injured"] = $regionstats["injuredtotal"] / $regionstats["populatio
 $regionstats["killed"] = $regionstats["killedtotal"] / $regionstats["population"];
 
 // find other sensors with the same observed property
-$otherwavesensors = sparqlquery(ENDPOINT_CCO, "
-	SELECT DISTINCT ?sensor ?sensorname
+$results = sparqlquery(ENDPOINT_CCO, "
+	SELECT ?sensor ?sensorname
 	WHERE {
 		?obs
 			a ssn:Observation ;
@@ -232,6 +232,18 @@ $otherwavesensors = sparqlquery(ENDPOINT_CCO, "
 		FILTER (?sensor != <$sensorURI>)
 	}
 ");
+$otherwavesensors = array();
+foreach ($results as $result) {
+	$found = false;
+	foreach ($otherwavesensors as $otherwavesensor) {
+		if ($otherwavesensor["sensor"] == $result["sensor"]) {
+			$found = true;
+			break;
+		}
+	}
+	if (!$found)
+		$otherwavesensors[] = $result;
+}
 
 $types_pub = array(
 	"lgdo:Pub",
