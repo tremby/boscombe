@@ -421,9 +421,9 @@ $types_convenience = array(
 		}
 
 		.expandlink, .collapselink {
-			height: 16px;
-			width: 16px;
-			float: left;
+			padding-left: 16px;
+			background-repeat: no-repeat;
+			background-position: center left;
 		}
 		.expandlink {
 			background-image: url("images/bullet_toggle_plus.png");
@@ -467,7 +467,9 @@ $types_convenience = array(
 				}
 			};
 			$("dl.single > dd").hide();
-			$("dl.single > dt").prepend("<a class=\"expandlink\" href=\"#\"></a>");
+			$("dl.single > dt").each(function() {
+				$(this).html("<a class=\"expandlink\" href=\"#\">" + $(this).html() + "</a>");
+			});
 			$("dl.single > dt a.expandlink, dl.single > dt a.collapselink").click(expandcollapsedl);
 
 			// chart controls
