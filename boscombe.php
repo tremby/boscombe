@@ -613,13 +613,16 @@ ob_start();
 	<?php
 	$amenities = nearbyamenities($types_parking, $coords, 5);
 	$i = 0;
-	foreach ($amenities as $amenity) {
+	foreach ($amenities as $uri => $amenity) {
 		if ($i++ == 6)
 			break;
 		$distance = distance($amenity[1], $coords);
 		?>
 		<tr>
-			<td><?php echo htmlspecialchars($amenity[0]); ?></td>
+			<td>
+				<?php echo htmlspecialchars($amenity[0]); ?>
+				<a class="uri" href="<?php echo htmlspecialchars($uri); ?>"></a>
+			</td>
 			<td>
 				<div class="barcontainer">
 					<div class="bar" style="width: <?php echo $distance * 10; ?>%;"></div>
@@ -730,10 +733,11 @@ function amenitylist($amenities) {
 	}
 	?>
 	<ul>
-		<?php foreach ($amenities as $amenity) { ?>
+		<?php foreach ($amenities as $uri => $amenity) { ?>
 			<li>
 				<?php echo htmlspecialchars($amenity[0]); ?>
 				<span class="hint">(<?php echo sprintf("%.01f", distance($coords, $amenity[1])); ?>km)</span>
+				<a class="uri" href="<?php echo htmlspecialchars($uri); ?>"></a>
 			</li>
 		<?php } ?>
 	</ul>
@@ -931,7 +935,7 @@ function nearbyamenities($type, $latlon, $radius = 10) {
 	}
 
 	// sort according to ascending distance from centre
-	usort($results, "sortbythirdelement");
+	uasort($results, "sortbythirdelement");
 
 	return $results;
 }
