@@ -86,7 +86,7 @@ what is available, the same can be achieved by using a dedicated RDF browser.
 The beginning of the output is something like the following:
 
 	id-semsorgrid:observations/cco/boscombe/Hs/20110215
-		-> rdf:type -> DUL:Collection
+		-> rdf:type -> ssne:ObservationCollection
 		-> DUL:hasMember -> id-semsorgrid:observations/cco/boscombe/Hs/20110215#000000,
 			id-semsorgrid:observations/cco/boscombe/Hs/20110215#003000,
 			id-semsorgrid:observations/cco/boscombe/Hs/20110215#010000

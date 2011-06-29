@@ -56,7 +56,7 @@ if ($triples < 1)
 	die("failed to load any triples from '$observationsURI'");
 
 // get URI of collection
-$collectionURI = $graph->allOfType("DUL:Collection");
+$collectionURI = $graph->allOfType("ssne:ObservationCollection");
 if (count($collectionURI) != 1)
 	die("expected exactly 1 collection");
 $collectionURI = $collectionURI->current()->uri;
