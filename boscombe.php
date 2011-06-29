@@ -408,7 +408,7 @@ $types_convenience = array(
 		}
 		table.modules > tbody > tr > td > p {
 			text-shadow: 1px 1px 0px #fff;
-			color: #898;
+			color: #676;
 		}
 		table.modules dl, table.modules ol, table.modules ul {
 			text-align: left;
