@@ -45,8 +45,9 @@ $ns = array(
 	"time" => "http://www.w3.org/2006/time#",
 	"sw" => "http://sweet.jpl.nasa.gov/2.1/sweetAll.owl#",
 	"id-semsorgrid" => "http://id.semsorgrid.ecs.soton.ac.uk/",
-	"osgb" => "http://data.ordnancesurvey.co.uk/id/",
 	"sciUnits" => "http://sweet.jpl.nasa.gov/2.0/sciUnits.owl#",
+	"dctypes" => "http://purl.org/dc/dcmitype/",
+	"osgb" => "http://data.ordnancesurvey.co.uk/id/",
 );
 
 // load linked data
