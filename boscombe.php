@@ -10,9 +10,9 @@ define("ENDPOINT_DBPEDIA", "http://dbpedia.org/sparql/");
 
 define("PROP_WINDWAVEHEIGHT", "http://marinemetadata.org/2005/08/ndbc_waves#Wind_Wave_Height");
 
-$observationsURI = "http://id.semsorgrid.ecs.soton.ac.uk/observations/cco/boscombe/Hs/latest";
+$startURI = "http://id.semsorgrid.ecs.soton.ac.uk/sensors/cco/boscombe";
 if (isset($_GET["uri"]))
-	$observationsURI = $_GET["uri"];
+	$startURI = $_GET["uri"];
 
 // include the ARC2 libraries
 require_once "arc2/ARC2.php";
@@ -46,30 +46,63 @@ $ns = array(
 	"sw" => "http://sweet.jpl.nasa.gov/2.1/sweetAll.owl#",
 	"id-semsorgrid" => "http://id.semsorgrid.ecs.soton.ac.uk/",
 	"osgb" => "http://data.ordnancesurvey.co.uk/id/",
+	"sciUnits" => "http://sweet.jpl.nasa.gov/2.0/sciUnits.owl#",
 );
 
-// load sensor linked data
+// load linked data
 $graph = new Graphite($ns);
 $graph->cacheDir("cache/graphite");
-$triples = $graph->load($observationsURI);
+$triples = $graph->load($startURI);
 if ($triples < 1)
-	die("failed to load any triples from '$observationsURI'");
+	die("failed to load any triples from '$startURI'");
 
-// get URI of collection
-$collectionURI = $graph->allOfType("ssne:ObservationCollection");
-if (count($collectionURI) != 1)
-	die("expected exactly 1 collection");
-$collectionURI = $collectionURI->current()->uri;
+// do we have a sensor? if so, get from there to the latest wave height readings
+$resource = $graph->resource($startURI);
+if ($resource->isType("ssn:SensingDevice")) {
+	$summaries = $graph->allOfType("ssne:PropertySummary");
+	if (count($summaries) == 0)
+		die("can't get to observations from sensor unless it has summaries");
+	$waveheightsummaries = array();
+	foreach ($summaries as $summary) {
+		if ($summary->get("ssne:forMeasuredProperty") == PROP_WINDWAVEHEIGHT) {
+			$summary->load();
+			$waveheightsummaries[] = $summary;
+		}
+	}
+
+	// latest lastobservation
+	$lastobservation = null;
+	foreach ($waveheightsummaries as $summary) {
+		$observation = $summary->get("ssne:hasLastObservation");
+		if ($observation->isNull())
+			continue;
+		if (is_null($lastobservation) || observationdate($observation) > observationdate($lastobservation))
+			$lastobservation = $observation;
+	}
+
+	// get collection that observation's summary is summarizing
+	$collection = $lastobservation->get("-ssne:hasLastObservation")->get("-ssne:hasPropertySummary");
+} else {
+	$collection = $graph->allOfType("ssne:ObservationCollection");
+	if (count($collection) != 1)
+		die("expected exactly 1 collection");
+	$collection = $collection->current();
+}
+
+// get summary
+$summaries = $collection->all("ssne:hasPropertySummary");
+$summary = null;
+foreach ($summaries as $s) {
+	if ($s->get("ssne:forMeasuredProperty") == PROP_WINDWAVEHEIGHT) {
+		$summary = $s;
+		$summary->load();
+		$mean = floatVal((string) $summary->get("ssne:hasMeasuredMeanValue")->get("ssne:hasQuantityValue"));
+		break;
+	}
+}
 
 // collect observations
-$observations = array();
-foreach ($graph->resource($collectionURI)->all("DUL:hasMember")->allOfType("ssn:Observation") as $observationNode) {
-	if ($observationNode->get("ssn:observedProperty") != PROP_WINDWAVEHEIGHT)
-		continue;
-	if (!$observationNode->get("ssn:observationResultTime")->isType("time:Interval"))
-		continue;
-	$observations[] = $observationNode;
-}
+$observations = getobservations($collection);
 usort($observations, "sortbydate");
 
 if (empty($observations))
@@ -90,10 +123,13 @@ foreach ($observations as $observationNode) {
 	$timesandheights[] = array($time, floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")));
 }
 
+$unit = $observations[0]->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityUnitOfMeasure");
+$unit->load();
+
 if (isset($_GET["chart"]))
 	ok(json_encode(array(
 		"data" => timestamptomilliseconds($timesandheights),
-		"source" => $collectionURI,
+		"source" => $collection->uri,
 		"prev" => is_null($prevobservation) ? null : $prevobservation->uri,
 		"next" => is_null($nextobservation) ? null : $nextobservation->uri,
 	)), "application/json");
@@ -589,7 +625,13 @@ $modules[] = ob_get_clean();
 ob_start();
 ?>
 <h2>Wave height data</h2>
-<p>Showing wave height data in the collection <a id="chart_source" class="uri" href="<?php echo htmlspecialchars($collectionURI); ?>"><?php echo htmlspecialchars($collectionURI); ?></a> in metres</p>
+<p>
+	Showing wave height data from collection
+	<a id="chart_source" class="uri" href="<?php echo htmlspecialchars($collection); ?>">
+		<?php echo htmlspecialchars($collection->hasLabel() ? $collection->label() : $graph->shrinkURI($collection)); ?>
+	</a>
+</p>
+<p>Unit used is <?php echo htmlspecialchars($unit->hasLabel() ? $unit->label() : $graph->shrinkURI($unit)); ?></p>
 <p>
 	<div id="chart"></div>
 	<a id="chart_prev" href="#">&larr; Show earlier data</a>
@@ -608,13 +650,75 @@ ob_start();
 			chart = $.plot($("#chart"), [{
 				data: heights,
 				color: "#06c",
-				lines: { fill: true, fillColor: "#9cf" }
+				lines: { fill: true, fillColor: "rgba(153, 204, 255, 0.7)" }
 			}], {
-				xaxis: { mode: "time" }
+				<?php if (!is_null($summary)) { ?>
+					grid: { markings: [ { color: "#f00", lineWidth: 1, yaxis: { from: <?php echo $mean; ?>, to: <?php echo $mean; ?> } } ], },
+				<?php } ?>
+				xaxis: { mode: "time" },
 			});
 		});
 	</script>
 </p>
+<?php
+$modules[] = ob_get_clean();
+
+ob_start();
+?>
+<?php if (is_null($summary)) { ?>
+	<h2>No collection summary is available</h2>
+<?php } else { ?>
+	<h2>
+		<?php echo htmlspecialchars($summary->label()); ?>
+		<a class="uri" href="<?php echo htmlspecialchars($summary); ?>"></a>
+	</h2>
+	<dl>
+		<dt>Created</dt>
+		<dd><?php echo date("r", strtotime($summary->get("dct:created"))); ?></dd>
+
+		<dt>For measured property</dt>
+		<dd><?php $summary->get("ssne:forMeasuredProperty")->load(); echo htmlspecialchars($summary->get("ssne:forMeasuredProperty")->label()); ?></dd>
+
+		<dt>Covers interval</dt>
+		<dd>
+			<?php $interval = $summary->get("ssne:coversTemporalInterval"); ?>
+			<?php echo date("r", strtotime($interval->get("ssne:hasIntervalStartDate"))); ?>
+			to
+			<?php echo date("r", strtotime($interval->get("ssne:hasIntervalEndDate"))); ?>
+		</dd>
+
+		<dt>Maximum observation</dt>
+		<dd>
+			<?php $observation = $summary->get("ssne:hasMaxObservation"); ?>
+			<strong><?php echo htmlspecialchars($observation->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")); ?></strong>
+			<?php $unit = $observation->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityUnitOfMeasure"); ?>
+			<?php $unit->load(); ?>
+			<?php echo htmlspecialchars($unit->hasLabel() ? $unit->label() : $graph->shrinkURI($unit)); ?>
+			<br>
+			Observed at <?php echo date("r", observationdate($observation)); ?>
+		</dd>
+
+		<dt>Minimum observation</dt>
+		<dd>
+			<?php $observation = $summary->get("ssne:hasMinObservation"); ?>
+			<strong><?php echo htmlspecialchars($observation->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")); ?></strong>
+			<?php $unit = $observation->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityUnitOfMeasure"); ?>
+			<?php $unit->load(); ?>
+			<?php echo htmlspecialchars($unit->hasLabel() ? $unit->label() : $graph->shrinkURI($unit)); ?>
+			<br>
+			Observed at <?php echo date("r", observationdate($observation)); ?>
+		</dd>
+
+		<dt>Mean value</dt>
+		<dd>
+			<?php $value = $summary->get("ssne:hasMeasuredMeanValue"); ?>
+			<strong><?php echo sprintf("%.3f", $mean); ?></strong>
+			<?php $unit = $value->get("ssne:hasQuantityUnitOfMeasure"); ?>
+			<?php $unit->load(); ?>
+			<?php echo htmlspecialchars($unit->hasLabel() ? $unit->label() : $graph->shrinkURI($unit)); ?>
+		</dd>
+	</dl>
+<?php } ?>
 <?php
 $modules[] = ob_get_clean();
 
@@ -779,7 +883,8 @@ ob_start();
 <ul class="twocol">
 	<?php foreach ($otherwavesensors as $othersensor) { ?>
 		<li>
-			<a class="uri" href="<?php echo htmlspecialchars($othersensor["sensor"]); ?>"><?php echo htmlspecialchars(isset($othersensor["sensorname"]) ? $othersensor["sensorname"] : uriendpart($othersensor["sensor"])); ?></a>
+			<a href="?uri=<?php echo urlencode($othersensor["sensor"]); ?>"><?php echo htmlspecialchars(isset($othersensor["sensorname"]) ? $othersensor["sensorname"] : uriendpart($othersensor["sensor"])); ?></a>
+			<a class="uri" href="<?php echo htmlspecialchars($othersensor["sensor"]); ?>"></a>
 		</li>
 	<?php } ?>
 </ul>
@@ -996,6 +1101,47 @@ function observationdate($o) {
 	if (!$time->isType("time:Interval"))
 		return false;
 	return strtotime($time->get("time:hasBeginning"));
+}
+
+function getobservations($collection) {
+	$graph = $collection->g;
+
+	$observations = array();
+
+	$collection->load();
+	foreach ($collection->all("DUL:hasMember", "ssne:includesCollection") as $member) {
+		if ($member->type()->isNull())
+			$member->load();
+		if ($member->type()->isNull())
+			continue;
+
+		switch ($graph->shrinkURI($member->type())) {
+			case "ssn:Observation":
+				// load if we don't have interesting properties
+				if ($member->get("ssn:observedProperty")->isNull() || $member->get("ssn:observationResultTime")->isNull())
+					$member->load();
+
+				// skip if not wave height
+				if ($member->get("ssn:observedProperty") != PROP_WINDWAVEHEIGHT)
+					continue;
+
+				// skip if it doesn't have a suitable time
+				if (!$member->get("ssn:observationResultTime")->isType("time:Interval"))
+					continue;
+
+				// accept
+				$observations[] = $member;
+				break;
+			case "ssne:ObservationCollection":
+				// recurse and get observations from the subcollection
+				$member->load();
+				$observations = array_merge($observations, getobservations($member));
+				break;
+			default:
+				break;
+		}
+	}
+	return $observations;
 }
 
 ?>
