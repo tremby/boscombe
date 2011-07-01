@@ -81,8 +81,11 @@ if ($resource->isType("ssn:SensingDevice")) {
 			$lastobservation = $observation;
 	}
 
-	// get collection that observation's summary is summarizing
-	$collection = $lastobservation->get("-ssne:hasLastObservation")->get("-ssne:hasPropertySummary");
+	// load the last observation
+	$lastobservation->load();
+
+	// get the collection it's part of
+	$collection = $lastobservation->get("-DUL:hasMember");
 } else {
 	$collection = $graph->allOfType("ssne:ObservationCollection");
 	if (count($collection) != 1)
