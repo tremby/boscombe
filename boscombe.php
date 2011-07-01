@@ -712,6 +712,8 @@ ob_start();
 			<?php echo htmlspecialchars($unit->hasLabel() ? $unit->label() : $graph->shrinkURI($unit)); ?>
 			<br>
 			Observed at <?php echo date("r", observationdate($observation)); ?>
+			<br>
+			<a href="?uri=<?php echo $observation; ?>">Show on graph</a>
 		</dd>
 
 		<dt>Minimum observation</dt>
@@ -723,6 +725,8 @@ ob_start();
 			<?php echo htmlspecialchars($unit->hasLabel() ? $unit->label() : $graph->shrinkURI($unit)); ?>
 			<br>
 			Observed at <?php echo date("r", observationdate($observation)); ?>
+			<br>
+			<a href="?uri=<?php echo $observation; ?>">Show on graph</a>
 		</dd>
 
 		<dt>Mean value</dt>
