@@ -367,7 +367,7 @@ $types_convenience = array(
 <html>
 <head>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-	<title><?php echo htmlspecialchars($placename); ?> surf status</title>
+	<title>Surf status (<?php echo htmlspecialchars($placename); ?>)</title>
 	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.min.js"></script>
 	<script type="text/javascript" src="flot/jquery.flot.min.js"></script>
 	<style type="text/css">
@@ -582,7 +582,7 @@ $types_convenience = array(
 <body>
 <div id="wrapper">
 
-<h1><?php echo htmlspecialchars($placename); ?> surf status</h1>
+<h1>Surf status (<?php echo htmlspecialchars($placename); ?>)</h1>
 
 <?php
 
