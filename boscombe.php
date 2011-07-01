@@ -81,6 +81,9 @@ if ($resource->isType("ssn:SensingDevice")) {
 			$lastobservation = $observation;
 	}
 
+	// get collection that observation's summary is summarizing
+	$toplevelcollection = $lastobservation->get("-ssne:hasLastObservation")->get("-ssne:hasPropertySummary");
+
 	// load the last observation
 	$lastobservation->load();
 
@@ -88,13 +91,14 @@ if ($resource->isType("ssn:SensingDevice")) {
 	$collection = $lastobservation->get("-DUL:hasMember");
 } else {
 	$collection = $graph->allOfType("ssne:ObservationCollection");
+	$toplevelcollection = $collection;
 	if (count($collection) != 1)
 		die("expected exactly 1 collection");
 	$collection = $collection->current();
 }
 
 // get summary
-$summaries = $collection->all("ssne:hasPropertySummary");
+$summaries = $toplevelcollection->all("ssne:hasPropertySummary");
 $summary = null;
 foreach ($summaries as $s) {
 	if ($s->get("ssne:forMeasuredProperty") == PROP_WINDWAVEHEIGHT) {
