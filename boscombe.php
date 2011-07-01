@@ -520,6 +520,7 @@ $types_convenience = array(
 			$("dl.single > dt").each(function() {
 				$(this).html("<a class=\"expandlink\" href=\"#\">" + $(this).html() + "</a>");
 			});
+			$("dl.single > dt:first-child .expandlink").removeClass("expandlink").addClass("collapselink");
 			$("dl.single > dt a.expandlink, dl.single > dt a.collapselink").click(expandcollapsedl);
 
 			// chart controls
