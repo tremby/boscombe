@@ -681,6 +681,13 @@ ob_start();
 		<?php echo htmlspecialchars($summary->label()); ?>
 		<a class="uri" href="<?php echo htmlspecialchars($summary); ?>"></a>
 	</h2>
+	<h3>
+		Covering interval
+		<?php $interval = $summary->get("ssne:coversTemporalInterval"); ?>
+		<?php echo date("Y-m-d", strtotime($interval->get("ssne:hasIntervalStartDate"))); ?>
+		to
+		<?php echo date("Y-m-d", strtotime($interval->get("ssne:hasIntervalEndDate"))); ?>
+	</h3>
 	<dl>
 		<dt>Created</dt>
 		<dd><?php echo date("r", strtotime($summary->get("dct:created"))); ?></dd>
