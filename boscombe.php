@@ -570,7 +570,7 @@ $types_convenience = array(
 					chart.setData([{
 						data: data.data,
 						color: "#06c",
-						lines: { fill: true, fillColor: "#9cf" }
+						lines: { fill: true, fillColor: "rgba(153, 204, 255, 0.7)" }
 					}]);
 					chart.setupGrid();
 					chart.draw();
