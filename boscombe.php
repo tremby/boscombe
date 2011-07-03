@@ -615,7 +615,7 @@ $modules[] = ob_get_clean();
 ob_start();
 ?>
 <h2>Sensor location map</h2>
-<div style="margin: 0 auto; width: 187px; height: 256px; position: relative; background-image: url(uk.png);">
+<div style="margin: 0 auto; width: 187px; height: 256px; position: relative; background-image: url(images/uk.png);">
 	<?php
 	$width = 161;
 	$height = 256;
@@ -626,7 +626,7 @@ ob_start();
 	$x = round($width * ($coords[1] - $left) / ($right - $left));
 	$y = round($height * ($coords[0] - $bottom) / ($top - $bottom));
 	?>
-	<img src="pin.png" style="position: absolute; left: <?php echo $x - 7; ?>px; bottom: <?php echo $y; ?>px;">
+	<img src="images/pin.png" style="position: absolute; left: <?php echo $x - 7; ?>px; bottom: <?php echo $y; ?>px;">
 </div>
 <?php
 $modules[] = ob_get_clean();
