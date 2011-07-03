@@ -52,7 +52,7 @@ $ns = array(
 
 // load linked data
 $graph = new Graphite($ns);
-$graph->cacheDir("cache/graphite");
+$graph->cacheDir("/tmp/mashupcache/graphite");
 $triples = $graph->load($startURI);
 if ($triples < 1)
 	die("failed to load any triples from '$startURI'");
@@ -183,7 +183,7 @@ if (!$based_near->isNull()) {
 if (is_null($district) || is_null($euroRegion)) {
 	// get nearby postcode
 	$pcgraph = new Graphite($ns);
-	$pcgraph->cacheDir("cache/graphite");
+	$pcgraph->cacheDir("/tmp/mashupcache/graphite");
 	if ($pcgraph->load("http://www.uk-postcodes.com/latlng/$coords[0],$coords[1].rdf") == 0)
 		die("failed to get postcode from uk-postcodes.com");
 	foreach ($pcgraph->allSubjects() as $subject)
@@ -974,7 +974,7 @@ function prefix($n = null) {
 // type is passed straight through to Arc
 // missing prefixes are added
 function sparqlquery($endpoint, $query, $type = "rows", $maxage = 86400/*1 day*/) {
-	$cachedir = "cache/sparql/" . md5($endpoint);
+	$cachedir = "/tmp/mashupcache/sparql/" . md5($endpoint);
 
 	if (!is_dir($cachedir))
 		mkdir($cachedir) or die("couldn't make cache directory");

@@ -1,4 +1,0 @@
-cache/sparql/*
-!cache/sparql/README
-cache/graphite/*
-!cache/graphite/README
