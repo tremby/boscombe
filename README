@@ -1,7 +1,7 @@
 For the Semsorgrid project, IAM, University of Southampton
 
-arc2 is a symlink to the Arc2 library <https://github.com/semsol/arc2/>
+arc2 is a symlink to the Arc2 library <https://github.com/tremby/arc2/>
 Graphite.php is a symlink to the Graphite library <https://github.com/cgutteridge/Graphite>
 flot is a symlink to the flot library <http://code.google.com/p/flot/>
 
-The webserver needs write permissions on the subdirectories of cache to write cache files.
+Files are cached to /tmp/mashupcache
