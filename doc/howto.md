@@ -426,10 +426,10 @@ HLAPI is a GeoJSON format. This serialization, which shows the locations of all
 wave height readings made in a particular time frame, can be rendered by various 
 mapping engines including Openlayers.
 
-The markup to display the map, given the path to an OpenJSON file, is very 
-simple and fully documented by Openlayers.
+The markup to display the map, given the path to an GeoJSON file, is very simple 
+and fully documented by Openlayers.
 
-Depending on how the HLAPI is configured the OpenJSON representation of wave 
+Depending on how the HLAPI is configured the GeoJSON representation of wave 
 height readings for a particular hour may be at
 
 	http://geojson.semsorgrid.ecs.soton.ac.uk/observations/cco/Hs/20110215/00
