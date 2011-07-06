@@ -50,14 +50,15 @@ $ns = array(
 	"osgb" => "http://data.ordnancesurvey.co.uk/id/",
 );
 
-// load linked data
+// set up graph
 $graph = new Graphite($ns);
 $graphitecache = "/tmp/mashupcache/graphite";
 if (!is_dir($graphitecache))
 	mkdir($graphitecache, 0777, true);
 $graph->cacheDir($graphitecache);
-$triples = $graph->load($startURI);
-if ($triples < 1)
+
+// load document into graph
+if ($graph->load($startURI) == 0)
 	die("failed to load any triples from '$startURI'");
 
 // do we have a sensor? if so, get from there to the latest wave height readings
@@ -101,9 +102,8 @@ if ($resource->isType("ssn:SensingDevice")) {
 }
 
 // get summary
-$summaries = $toplevelcollection->all("ssne:hasPropertySummary");
 $summary = null;
-foreach ($summaries as $s) {
+foreach ($toplevelcollection->all("ssne:hasPropertySummary") as $s) {
 	if ($s->get("ssne:forMeasuredProperty") == PROP_WINDWAVEHEIGHT) {
 		$summary = $s;
 		$summary->load();
@@ -113,7 +113,7 @@ foreach ($summaries as $s) {
 }
 
 // collect observations
-$observations = getobservations($collection);
+$observations = $collection->all("DUL:hasMember")->allOfType("ssn:Observation")->getArrayCopy();
 usort($observations, "sortbydate");
 
 if (empty($observations))
@@ -128,11 +128,8 @@ if ($nextobservation->isNull())
 	$nextobservation = null;
 
 $timesandheights = array();
-foreach ($observations as $observationNode) {
-	$timeNode = $observationNode->get("ssn:observationResultTime");
-	$time = strtotime($timeNode->get("time:hasBeginning"));
-	$timesandheights[] = array($time, floatVal((string) $observationNode->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")));
-}
+foreach ($observations as $observation)
+	$timesandheights[] = array(observationdate($observation), floatVal((string) $observation->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityValue")));
 
 $unit = $observations[0]->get("ssn:observationResult")->get("ssn:hasValue")->get("ssne:hasQuantityUnitOfMeasure");
 $unit->load();
@@ -146,15 +143,12 @@ if (isset($_GET["chart"]))
 	)), "application/json");
 
 // get sensor URI
-$sensor = $graph->allOfType("ssn:Observation")->get("ssn:observedBy")->distinct()->current();
-if ($sensor->isNull())
-	die("no results yet today");
-$sensorURI = $sensor->uri;
+$sensor = $observations[0]->get("ssn:observedBy");
 
 // get sensor coordinates
-if ($graph->load($sensorURI) == 0)
+if ($sensor->load() == 0)
 	die("couldn't load sensor RDF");
-$location = $graph->resource($sensorURI)->get("ssn:hasDeployment")->get("ssn:deployedOnPlatform")->get("sw:hasLocation");
+$location = $sensor->get("ssn:hasDeployment")->get("ssn:deployedOnPlatform")->get("sw:hasLocation");
 if ($location->isNull())
 	die("couldn't get sensor coordinates");
 $coords = array(
@@ -164,7 +158,7 @@ $coords = array(
 
 // do we have a foaf:based_near from which we can get place name, district and 
 // region name?
-$based_near = $graph->resource($sensorURI)->get("foaf:based_near");
+$based_near = $sensor->get("foaf:based_near");
 $placename = null;
 $district = null;
 $euroRegion = null;
@@ -276,7 +270,7 @@ $results = sparqlquery(ENDPOINT_CCO, "
 		OPTIONAL {
 			?sensor rdfs:label ?sensorname .
 		}
-		FILTER (?sensor != <$sensorURI>)
+		FILTER (?sensor != <$sensor>)
 	}
 ");
 $otherwavesensors = array();
@@ -597,8 +591,8 @@ ob_start();
 <dl>
 	<dt>Sensor</dt>
 	<dd>
-		<?php echo $graph->resource($sensorURI)->label(); ?>
-		<a class="uri" href="<?php echo htmlspecialchars($sensorURI); ?>"></a></dd>
+		<?php echo $sensor->label(); ?>
+		<a class="uri" href="<?php echo htmlspecialchars($sensor); ?>"></a></dd>
 	</dd>
 
 	<dt>Location</dt>
@@ -665,9 +659,9 @@ ob_start();
 				lines: { fill: true, fillColor: "rgba(153, 204, 255, 0.7)" }
 			}], {
 				<?php if (!is_null($summary)) { ?>
-					grid: { markings: [ { color: "#f00", lineWidth: 1, yaxis: { from: <?php echo $mean; ?>, to: <?php echo $mean; ?> } } ], },
+					grid: { markings: [ { color: "#f00", lineWidth: 1, yaxis: { from: <?php echo $mean; ?>, to: <?php echo $mean; ?> } } ] },
 				<?php } ?>
-				xaxis: { mode: "time" },
+				xaxis: { mode: "time" }
 			});
 		});
 	</script>
